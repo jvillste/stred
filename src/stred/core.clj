@@ -1198,7 +1198,6 @@
                                                                                             (search-entities db type new-text))
                                                                                           types))
                                                                         (distinct (search-entities db new-text))))]
-
                                                        (swap! state-atom
                                                               (fn [state]
                                                                 (assoc state
@@ -1589,6 +1588,10 @@
                                  (transact! db (concat (item-removal-transaction (nth array (:selected-index state)))
                                                        [[:set entity attribute (drop-index (:selected-index state)
                                                                                            array)]]))
+                                 (if (= 1 (count array))
+                                   (swap! state-atom dissoc :selected-index)
+                                   (swap! state-atom update :selected-index #(min % (- (count array)
+                                                                                       2))))
 
                                  (when (< 1 (count array))
                                    (keyboard/handle-next-scene-graph! (fn [scene-graph]
@@ -1765,10 +1768,12 @@
               (:id entity-id)])
            entity-ids))
 
-(defn entity-attribute-editor-command-set [state-atom db entity attribute]
+(defn entity-attribute-editor-command-set [state-atom db entity attribute reverse?]
   (let [state @state-atom
-        values (sort-entity-ids (into [] (db-common/values db entity attribute)))]
-    {:name "entity values editor"
+        values (sort-entity-ids (if reverse?
+                                  (db-common/entities db attribute entity)
+                                  (db-common/values db entity attribute)))]
+    {:name "entity attribute editor"
      :commands [{:name "cancel adding"
                  :available? (and (not (empty? values))
                                   (:adding? state))
@@ -1780,8 +1785,10 @@
                  :available? (not (empty? values))
                  :key-patterns [[#{:control} :d]]
                  :run! (fn [subtree]
-                         (transact! db [[:remove entity attribute (nth values
-                                                                       (:selected-index state))]])
+                         (transact! db [(if reverse?
+                                          [:remove (nth values (:selected-index state)) attribute entity]
+                                          [:remove entity attribute (nth values
+                                                                         (:selected-index state))])])
 
                          (when (< 1 (count values))
                            (keyboard/handle-next-scene-graph! (fn [scene-graph]
@@ -1855,7 +1862,8 @@
             (assoc :command-set (entity-attribute-editor-command-set state-atom
                                                                      db
                                                                      entity
-                                                                     attribute)))))))
+                                                                     attribute
+                                                                     reverse?)))))))
 
 (defn entity-attribute-editor-2 [_db _entity _attribute _valid-types & _options]
   (let [state-atom (dependable-atom/atom "entity-attribute-editor-state"
@@ -1902,7 +1910,8 @@
             (assoc :command-set (entity-attribute-editor-command-set state-atom
                                                                      db
                                                                      entity
-                                                                     attribute)))))))
+                                                                     attribute
+                                                                     reverse?)))))))
 
 (defn empty-attribute-prompt [db entity attribute reverse?]
   [prompt-2
@@ -1912,11 +1921,18 @@
                                            text))})
 
    (fn commands [results]
-     (concat (when (and (:text results)
+     (concat (for [value-entity (:entities results)]
+               {:view (value-view db value-entity)
+                :available? (constantly true)
+                :run! (fn [_subtree]
+                        (transact! db [(if reverse?
+                                         [:add value-entity attribute entity]
+                                         [:add entity attribute value-entity])]))})
+             (when (and (:text results)
                         (not reverse?))
                [{:view (text (pr-str (:text results)))
                  :available? (constantly true)
-                 :key-patterns  [[#{} :enter]]
+                 :key-patterns  [[#{:control} :enter]]
                  :run! (fn [_subtree]
                          (transact! db [[:add entity attribute (:text results)]]))}])
 
@@ -1927,15 +1943,7 @@
                        (transact! db (concat [[:add :tmp/new-entity (prelude :label) (:text results)]]
                                              (if reverse?
                                                [[:add :tmp/new-entity attribute entity]]
-                                               [[:add entity attribute :tmp/new-entity]]))))}]
-
-             (for [value-entity (:entities results)]
-               {:view (value-view db entity)
-                :available? (constantly true)
-                :run! (fn [_subtree]
-                        (transact! db [(if reverse?
-                                         [:add value-entity attribute entity]
-                                         [:add entity attribute value-entity])]))})))])
+                                               [[:add entity attribute :tmp/new-entity]]))))}]))])
 
 (defn change-view [db change]
   (text (str "["
@@ -2431,13 +2439,10 @@
                             (if range
                               (condp = range
                                 (prelude :text)
-                                (property (let [attribute (db-common/value db
-                                                                           editor
-                                                                           (stred :attribute))]
-                                            (str (or (:stream-id attribute)
-                                                     :tmp)
-                                                 "/"
-                                                 (label db attribute)))
+                                (property (str (or (:stream-id attribute)
+                                                   :tmp)
+                                               "/"
+                                               (label db attribute))
                                           [text-attribute-editor
                                            db
                                            entity
@@ -2446,22 +2451,17 @@
                                                             (stred :attribute))])
 
                                 (prelude :entity)
-                                (property (let [attribute (db-common/value db
-                                                                           editor
-                                                                           (stred :attribute))]
-                                            (str (when reverse?
-                                                   "<- ")
-                                                 (or (:stream-id attribute)
-                                                     :tmp)
-                                                 "/"
-                                                 (label db attribute)))
+                                (property (str (when reverse?
+                                                 "<- ")
+                                               (or (:stream-id attribute)
+                                                   :tmp)
+                                               "/"
+                                               (label db attribute))
 
                                           [entity-attribute-editor
                                            db
                                            entity
-                                           (db-common/value db
-                                                            editor
-                                                            (stred :attribute))
+                                           attribute
                                            nil
                                            {:reverse? reverse?}])
 
@@ -2827,14 +2827,14 @@
                                          ;; (header "Concepts")
                                          ;; (entity-list state-atom (argumentation :concept))
 
-                                         #_(when (not (:show-help? state))
-                                             (ver 0
-                                                  (header "Uncommitted changes")
-                                                  (transaction-view (:branch state) (branch-changes (:branch state)) #_the-branch-changes)
+                                         (when (not (:show-help? state))
+                                           (ver 0
+                                                (header "Uncommitted changes")
+                                                (transaction-view (:branch state) (branch-changes (:branch state)) #_the-branch-changes)
 
-                                                  (ver 0 (map (partial change-view (:branch state))
-                                                              (sort comparator/compare-datoms
-                                                                    (branch-changes (:branch state)))))))
+                                                (ver 0 (map (partial change-view (:branch state))
+                                                            (sort comparator/compare-datoms
+                                                                  (branch-changes (:branch state)))))))
 
                                          ;; (header "Undoed transactions")
                                          ;; (ver 30 (for [undoed-transaction (:undoed-transactions state)]
