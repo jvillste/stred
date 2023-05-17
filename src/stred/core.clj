@@ -861,6 +861,8 @@
          "]")
     (pr-str value)))
 
+(def column-width 1200)
+
 (defn value-view [db value]
   ;;(text (value-string db value))
 
@@ -876,8 +878,8 @@
                   {:width 35
                    :height 35})
                 {:fill-color [200 200 255 255]}))
-         (layouts/with-maximum-size 1200 nil (text (or (label db value)
-                                                       (value-string db value)))))
+         (layouts/with-maximum-size column-width nil (text (or (label db value)
+                                                               (value-string db value)))))
     (text (pr-str value))))
 
 (defn scene-graph-to-string [scene-graph]
@@ -1041,13 +1043,14 @@
 ;;                                                                                (:results state)))))))))))
 
 (defn text-attribute-editor [db entity attribute]
-  ^{:local-id [entity attribute]}
-  [text-editor-2
-   (db-common/value db entity attribute)
-   (fn [new-value]
-     (if (= "" new-value)
-       (transact! db [[:remove entity attribute (db-common/value db entity attribute)]])
-       (transact! db [[:set entity attribute new-value]])))])
+  (layouts/with-maximum-size column-width nil
+    ^{:local-id [entity attribute]}
+    [text-editor-2
+     (db-common/value db entity attribute)
+     (fn [new-value]
+       (if (= "" new-value)
+         (transact! db [[:remove entity attribute (db-common/value db entity attribute)]])
+         (transact! db [[:set entity attribute new-value]])))]))
 
 (defn outline [db entity]
   (layouts/vertically-2 {:margin 10}
@@ -2392,6 +2395,10 @@
                   (argumentation :supports)
                   [(argumentation :statement)]])))
 
+;; TODO: how to allow embedded outline views? each attribute editor in
+;; an outline view should have a value editor, but it should only be
+;; added on demand. value editor could be a table or an outline view.
+
 (defn outline-view [db outline-view]
   (let [entity (common/value db
                              outline-view
@@ -3511,9 +3518,9 @@
                                                                  :tmp/new-statement
                                                                  (prelude :type-attribute)
                                                                  (argumentation :statement)][:add
-                                                                 :tmp/new-statement
-                                                                 (prelude :label)
-                                                                 1]])
+                                                                                             :tmp/new-statement
+                                                                                             (prelude :label)
+                                                                                             1]])
                                                               :temporary-id-resolution
                                                               :tmp/new-statement)]
                                                {:stream-db stream-db
