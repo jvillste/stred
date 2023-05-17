@@ -1424,7 +1424,7 @@
        (scene-graph/find-first-breath-first :can-gain-focus?)
        (keyboard/set-focused-node!)))
 
-(defn array-editor-command-set [state-atom db entity attribute item-removal-transaction item-commands]
+(defn array-editor-command-set [state-atom db entity attribute allow-array-spreading? item-removal-transaction item-commands]
   (let [state @state-atom
         array (db-common/value db entity attribute)]
     {:name "array editor"
@@ -1476,14 +1476,6 @@
                                                                       (focus-insertion-prompt scene-graph
                                                                                               (:id subtree)))))}
 
-                        {:name "spread array"
-                         :available? true
-                         :key-patterns [[#{:control} :a]]
-                         :run! (fn [_subtree]
-                                 (transact! db (into [[:remove entity attribute array]]
-                                                     (for [value array]
-                                                       [:add entity attribute value]))))}
-
                         {:name "insert below"
                          :available? (:selected-index state)
                          :key-patterns [[#{:control} :i]]
@@ -1528,7 +1520,15 @@
                                                                                                    scene-graph)
                                                                            (scene-graph/find-first-child #(= [:value (inc (:selected-index state))]
                                                                                                              (:local-id %)))
-                                                                           (keyboard/set-focused-node!)))))}])}))
+                                                                           (keyboard/set-focused-node!)))))}]
+                       (when allow-array-spreading?
+                         [{:name "spread array"
+                           :available? true
+                           :key-patterns [[#{:control} :a]]
+                           :run! (fn [_subtree]
+                                   (transact! db (into [[:remove entity attribute array]]
+                                                       (for [value array]
+                                                         [:add entity attribute value]))))}]))}))
 
 (defn array-editor-item-view-keyboard-event-handler [state-atom index _subtree event]
   (cond (and (= :on-target (:phase event))
@@ -1545,8 +1545,11 @@
 (defn array-editor [_db _entity _attribute _item-removal-transaction _new-item-transaction _run-query _available-items _item-view & [_options]]
   (let [state-atom (dependable-atom/atom "array-editor-state"
                                          {})]
-    (fn array-editor [db entity attribute item-removal-transaction new-item-transaction run-query available-items item-view & [{:keys [item-commands show-empty-prompt?]
-                                                                                                                                :or {show-empty-prompt? true}}]]
+    (fn array-editor [db entity attribute item-removal-transaction new-item-transaction run-query available-items item-view & [{:keys [item-commands
+                                                                                                                                       show-empty-prompt?
+                                                                                                                                       allow-array-spreading?]
+                                                                                                                                :or {show-empty-prompt? true
+                                                                                                                                     allow-array-spreading? false}}]]
       (let [state @state-atom
             array (db-common/value db entity attribute)
             array-editor-node-id view-compiler/id]
@@ -1615,6 +1618,7 @@
                                                       db
                                                       entity
                                                       attribute
+                                                      allow-array-spreading?
                                                       item-removal-transaction
                                                       item-commands)
                ;; :can-gain-focus? true
@@ -1792,7 +1796,8 @@
                  :label (:text results)}])))
 
    (fn item-view [db entity]
-     (value-view db entity))])
+     (value-view db entity))
+   {:allow-array-spreading? true}])
 
 
 
@@ -1858,7 +1863,7 @@
                          (transact! db (into [[:add entity attribute (vec values)]]
                                              (common/changes-to-remove-entity-property (common/deref db) entity attribute))))}
 
-                {:name "add"
+                {:name "insert"
                  :available? true
                  :key-patterns [[#{:control} :i]]
                  :run! (fn [subtree]
@@ -1882,29 +1887,7 @@
                                               (concat (common/entities db attribute entity)
                                                       (common/entities-referring-with-sequence db entity))
                                               (common/values db entity attribute)))]
-        (prn 'value-entities value-entities) ;; TODO: remove me
-
         (-> (ver 0
-                 (when (or (empty? value-entities)
-                           (:adding? state))
-                   ^{:local-id :adding-prompt}
-                   [prompt
-                    db
-                    valid-types
-                    (fn on-new-entity [new-value-entity]
-                      (when (not (contains? (hash-set value-entities)
-                                            new-value-entity))
-                        (transact! db [(if reverse?
-                                         [:add new-value-entity attribute entity]
-                                         [:add entity attribute new-value-entity])])
-                        (swap! state-atom
-                               assoc
-                               :selected-index (->> (conj value-entities new-value-entity)
-                                                    (sort-entity-ids)
-                                                    medley/indexed
-                                                    (medley/find-first #(= new-value-entity (second %)))
-                                                    first)))
-                      (swap! state-atom assoc :adding? false))])
                  (map-indexed (fn [index value-entity]
                                 (-> (highlight (value-view db value-entity)
                                                {:fill-color (if (= index (:selected-index state))
@@ -1917,7 +1900,70 @@
                                            :keyboard-event-handler [entity-array-attribute-editor-value-view-keyboard-event-handler
                                                                     state-atom
                                                                     index])))
-                              value-entities))
+                              value-entities)
+                 (when (or (empty? value-entities)
+                           (:adding? state))
+                   ^{:local-id :adding-prompt}
+                   [prompt-2
+                    (fn run-query [text]
+                      {:text text
+                       :entities (distinct (search-entities db
+                                                            text))})
+
+                    (fn commands [results]
+                      (concat (for [new-value-entity (:entities results)]
+                                {:view (value-view db new-value-entity)
+                                 :available? true
+                                 :run! (fn [_subtree]
+                                         (when (not (contains? (hash-set value-entities)
+                                                               new-value-entity))
+                                           (transact! db [(if reverse?
+                                                            [:add new-value-entity attribute entity]
+                                                            [:add entity attribute new-value-entity])])
+                                           (swap! state-atom
+                                                  assoc
+                                                  :selected-index (->> (conj value-entities new-value-entity)
+                                                                       (sort-entity-ids)
+                                                                       medley/indexed
+                                                                       (medley/find-first #(= new-value-entity (second %)))
+                                                                       first)))
+                                         (swap! state-atom assoc :adding? false))})
+
+                              [{:name "Create new entity"
+                                :available? true
+                                :key-patterns  [[#{:control} :c] [#{:control} :n]]
+                                :run! (fn [_subtree]
+                                        (let [temporary-id-resolution (transact! db (concat [[:add :tmp/new-entity (prelude :label) (:text results)]]
+                                                                                            (if reverse?
+                                                                                              [[:add :tmp/new-entity attribute entity]]
+                                                                                              [[:add entity attribute :tmp/new-entity]])))
+                                              new-value-entity (get temporary-id-resolution :tmp/new-entity)]
+                                          (swap! state-atom
+                                                 assoc
+                                                 :selected-index (->> (conj value-entities new-value-entity)
+                                                                      (sort-entity-ids)
+                                                                      medley/indexed
+                                                                      (medley/find-first #(= new-value-entity
+                                                                                             (second %)))
+                                                                      first))
+                                          (swap! state-atom assoc :adding? false)))}]))]
+                   #_[prompt ;; here
+                      db
+                      valid-types
+                      (fn on-new-entity [new-value-entity]
+                        (when (not (contains? (hash-set value-entities)
+                                              new-value-entity))
+                          (transact! db [(if reverse?
+                                           [:add new-value-entity attribute entity]
+                                           [:add entity attribute new-value-entity])])
+                          (swap! state-atom
+                                 assoc
+                                 :selected-index (->> (conj value-entities new-value-entity)
+                                                      (sort-entity-ids)
+                                                      medley/indexed
+                                                      (medley/find-first #(= new-value-entity (second %)))
+                                                      first)))
+                        (swap! state-atom assoc :adding? false))]))
             (assoc :command-set (entity-attribute-editor-command-set state-atom
                                                                      db
                                                                      entity
@@ -1925,54 +1971,6 @@
                                                                      value-entities
                                                                      reverse?)))))))
 
-(defn entity-attribute-editor-2 [_db _entity _attribute _valid-types & _options]
-  (let [state-atom (dependable-atom/atom "entity-attribute-editor-state"
-                                         {})]
-    (fn [db entity attribute valid-types & [{:keys [reverse?]}]]
-      (let [state @state-atom
-            value-entities (sort-entity-ids (if reverse?
-                                              (common/entities db attribute entity)
-                                              (common/values db entity attribute)))]
-        (-> (ver 0
-                 (when (or (empty? value-entities)
-                           (:adding? state))
-                   ^{:local-id :adding-prompt}
-                   [prompt
-                    db
-                    valid-types
-                    (fn on-new-entity [new-value-entity]
-                      (when (not (contains? (hash-set value-entities)
-                                            new-value-entity))
-                        (transact! db [(if reverse?
-                                         [:add new-value-entity attribute entity]
-                                         [:add entity attribute new-value-entity])])
-                        (swap! state-atom
-                               assoc
-                               :selected-index (->> (conj value-entities new-value-entity)
-                                                    (sort-entity-ids)
-                                                    medley/indexed
-                                                    (medley/find-first #(= new-value-entity (second %)))
-                                                    first)))
-                      (swap! state-atom assoc :adding? false))])
-                 (map-indexed (fn [index value-entity]
-                                (-> (highlight (value-view db value-entity)
-                                               {:fill-color (if (= index (:selected-index state))
-                                                              [240 240 255 255]
-                                                              [255 255 255 0])})
-                                    (assoc :mouse-event-handler [focus-on-click-mouse-event-handler]
-                                           :can-gain-focus? true
-                                           :local-id [:value index]
-                                           :entity value-entity
-                                           :keyboard-event-handler [entity-array-attribute-editor-value-view-keyboard-event-handler
-                                                                    state-atom
-                                                                    index])))
-                              value-entities))
-            (assoc :command-set (entity-attribute-editor-command-set state-atom
-                                                                     db
-                                                                     entity
-                                                                     attribute
-                                                                     value-entities
-                                                                     reverse?)))))))
 
 (defn empty-attribute-prompt [db entity attribute reverse?]
   [prompt-2
@@ -1984,7 +1982,7 @@
    (fn commands [results]
      (concat (for [value-entity (:entities results)]
                {:view (value-view db value-entity)
-                :available? (constantly true)
+                :available? true
                 :run! (fn [_subtree]
                         (transact! db [(if reverse?
                                          [:add value-entity attribute entity]
@@ -1992,13 +1990,13 @@
              (when (and (:text results)
                         (not reverse?))
                [{:view (text (pr-str (:text results)))
-                 :available? (constantly true)
+                 :available? true
                  :key-patterns  [[#{:control} :enter]]
                  :run! (fn [_subtree]
                          (transact! db [[:add entity attribute (:text results)]]))}])
 
              [{:name "Create new entity"
-               :available? (constantly true)
+               :available? true
                :key-patterns  [[#{:control} :c] [#{:control} :n]]
                :run! (fn [_subtree]
                        (transact! db (concat [[:add :tmp/new-entity (prelude :label) (:text results)]]
@@ -2312,7 +2310,8 @@
 (defn property [label editor]
   (hor 0
        (layouts/with-margins 5 0 0 0
-         (text (str label ":")))
+         (text (str label ":")
+               {:font bold-font}))
        editor))
 
 (defn statement-view [state-atom statement]
@@ -2407,13 +2406,16 @@
                   (argumentation :supports)
                   [(argumentation :statement)]])))
 
-(defn outline-property [db attribute editor]
-  (property (label db attribute)
+(defn outline-property [db attribute reverse? editor]
+  (property (str (when reverse?
+                   "<-")
+                 (label db attribute))
             #_(str (or (:stream-id attribute)
                      :tmp)
                  "/"
                  (label db attribute))
             editor))
+
 (defn outline-view [db outline-view]
   (let [entity (common/value db
                              outline-view
@@ -2513,6 +2515,7 @@
                                 (prelude :text)
                                 (outline-property db
                                                   attribute
+                                                  reverse?
                                                   [text-attribute-editor
                                                    db
                                                    entity
@@ -2523,6 +2526,7 @@
                                 (prelude :entity)
                                 (outline-property db
                                                   attribute
+                                                  reverse?
                                                   [entity-attribute-editor
                                                    db
                                                    entity
@@ -2533,6 +2537,7 @@
                                 (prelude :array)
                                 (outline-property db
                                                   attribute
+                                                  reverse?
                                                   (ver 0
                                                        (text "[")
                                                        [entity-array-attribute-editor-2
@@ -2547,17 +2552,14 @@
                                                                     editor
                                                                     (prelude :type-attribute))))))
 
-                              (property (str (when reverse?
-                                               "<- ")
-                                             (or (:stream-id attribute)
-                                                 :tmp)
-                                             "/"
-                                             (label db attribute))
-                                        [empty-attribute-prompt
-                                         db
-                                         entity
-                                         attribute
-                                         reverse?]))))
+                              (outline-property db
+                                                attribute
+                                                reverse?
+                                                [empty-attribute-prompt
+                                                 db
+                                                 entity
+                                                 attribute
+                                                 reverse?]))))
                         {:item-commands (fn [editor]
                                           (let [range (db-common/value-in db
                                                                           editor
