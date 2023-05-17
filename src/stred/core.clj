@@ -2392,16 +2392,6 @@
                   (argumentation :supports)
                   [(argumentation :statement)]])))
 
-(defn outline-property [db attribute reverse? editor]
-  (property (str (when reverse?
-                   "<-")
-                 (label db attribute))
-            #_(str (or (:stream-id attribute)
-                     :tmp)
-                 "/"
-                 (label db attribute))
-            editor))
-
 (defn outline-view [db outline-view]
   (let [entity (common/value db
                              outline-view
@@ -2496,56 +2486,52 @@
                                             (db-common/value db
                                                              attribute
                                                              (prelude :range)))]
-                            (if range
-                              (condp = range
-                                (prelude :text)
-                                (outline-property db
-                                                  attribute
-                                                  reverse?
-                                                  [text-attribute-editor
-                                                   db
-                                                   entity
-                                                   (db-common/value db
-                                                                    editor
-                                                                    (stred :attribute))])
+                            (property (str (when reverse?
+                                             "<-")
+                                           (label db attribute))
+                                      #_(str (or (:stream-id attribute)
+                                                 :tmp)
+                                             "/"
+                                             (label db attribute))
+                                      (if range
+                                        (condp = range
+                                          (prelude :text)
+                                          [text-attribute-editor
+                                           db
+                                           entity
+                                           (db-common/value db
+                                                            editor
+                                                            (stred :attribute))]
 
-                                (prelude :entity)
-                                (outline-property db
-                                                  attribute
-                                                  reverse?
-                                                  [entity-attribute-editor
-                                                   db
-                                                   entity
-                                                   attribute
-                                                   nil
-                                                   {:reverse? reverse?}])
+                                          (prelude :entity)
+                                          [entity-attribute-editor
+                                           db
+                                           entity
+                                           attribute
+                                           nil
+                                           {:reverse? reverse?}]
 
-                                (prelude :array)
-                                (outline-property db
-                                                  attribute
-                                                  reverse?
-                                                  (ver 0
-                                                       (text "[")
-                                                       [entity-array-attribute-editor-2
-                                                        db
-                                                        entity
-                                                        attribute]
-                                                       (text "]")))
+                                          (prelude :array)
+                                          (ver 0
+                                               (text "[")
+                                               [entity-array-attribute-editor-2
+                                                db
+                                                entity
+                                                attribute]
+                                               (text "]"))
 
-                                (text (str (pr-str editor)
-                                           " "
-                                           (pr-str (db-common/value db
-                                                                    editor
-                                                                    (prelude :type-attribute))))))
+                                          (text (str (pr-str editor)
+                                                     " "
+                                                     (pr-str (db-common/value db
+                                                                              editor
+                                                                              (prelude :type-attribute))))))
 
-                              (outline-property db
-                                                attribute
-                                                reverse?
-                                                [empty-attribute-prompt
-                                                 db
-                                                 entity
-                                                 attribute
-                                                 reverse?]))))
+                                        [empty-attribute-prompt
+                                         db
+                                         entity
+                                         attribute
+                                         reverse?]))))
+
                         {:item-commands (fn [editor]
                                           (let [range (db-common/value-in db
                                                                           editor
