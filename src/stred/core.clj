@@ -604,7 +604,6 @@
    (map :?entity
         (into []
               (apply query/reducible-query
-
                      (for [token (db-common/tokenize query-string)]
                        [(-> db :indexes :full-text :collection)
                         [(prelude :label)
@@ -1477,6 +1476,14 @@
                                                                       (focus-insertion-prompt scene-graph
                                                                                               (:id subtree)))))}
 
+                        {:name "spread array"
+                         :available? true
+                         :key-patterns [[#{:control} :a]]
+                         :run! (fn [_subtree]
+                                 (transact! db (into [[:remove entity attribute array]]
+                                                     (for [value array]
+                                                       [:add entity attribute value]))))}
+
                         {:name "insert below"
                          :available? (:selected-index state)
                          :key-patterns [[#{:control} :i]]
@@ -1538,11 +1545,13 @@
 (defn array-editor [_db _entity _attribute _item-removal-transaction _new-item-transaction _run-query _available-items _item-view & [_options]]
   (let [state-atom (dependable-atom/atom "array-editor-state"
                                          {})]
-    (fn array-editor [db entity attribute item-removal-transaction new-item-transaction run-query available-items item-view & [{:keys [item-commands]}]]
+    (fn array-editor [db entity attribute item-removal-transaction new-item-transaction run-query available-items item-view & [{:keys [item-commands show-empty-prompt?]
+                                                                                                                                :or {show-empty-prompt? true}}]]
       (let [state @state-atom
             array (db-common/value db entity attribute)
             array-editor-node-id view-compiler/id]
-        (if (empty? array)
+        (if (and (empty? array)
+                 show-empty-prompt?)
           ^{:local-id :insertion-prompt}
           [prompt-2
            run-query
@@ -1555,17 +1564,17 @@
                                                       [[:set entity attribute [item-id]]])))))))]
           (-> (ver 0
                    (map-indexed (fn [index value-entity]
-                                  (let [item-view (-> (highlight (item-view db value-entity)
+                                  (let [item-view (-> (highlight (with-meta [item-view db value-entity]
+                                                                   {:mouse-event-handler [focus-on-click-mouse-event-handler]
+                                                                    :can-gain-focus? true
+                                                                    :array-value true
+                                                                    :local-id [:value index]
+                                                                    :keyboard-event-handler [array-editor-item-view-keyboard-event-handler
+                                                                                             state-atom
+                                                                                             index]})
                                                                  {:fill-color (if (= index (:selected-index state))
                                                                                 [240 240 255 255]
-                                                                                [255 255 255 0])})
-                                                      (assoc :mouse-event-handler [focus-on-click-mouse-event-handler]
-                                                             :can-gain-focus? true
-                                                             :array-value true
-                                                             :local-id [:value index]
-                                                             :keyboard-event-handler [array-editor-item-view-keyboard-event-handler
-                                                                                      state-atom
-                                                                                      index]))
+                                                                                [255 255 255 0])}))
                                         insertion-prompt ^{:local-id :insertion-prompt} [prompt-2
                                                                                          run-query
                                                                                          (fn [results]
@@ -2398,6 +2407,13 @@
                   (argumentation :supports)
                   [(argumentation :statement)]])))
 
+(defn outline-property [db attribute editor]
+  (property (label db attribute)
+            #_(str (or (:stream-id attribute)
+                     :tmp)
+                 "/"
+                 (label db attribute))
+            editor))
 (defn outline-view [db outline-view]
   (let [entity (common/value db
                              outline-view
@@ -2495,47 +2511,35 @@
                             (if range
                               (condp = range
                                 (prelude :text)
-                                (property (str (or (:stream-id attribute)
-                                                   :tmp)
-                                               "/"
-                                               (label db attribute))
-                                          [text-attribute-editor
-                                           db
-                                           entity
-                                           (db-common/value db
-                                                            editor
-                                                            (stred :attribute))])
+                                (outline-property db
+                                                  attribute
+                                                  [text-attribute-editor
+                                                   db
+                                                   entity
+                                                   (db-common/value db
+                                                                    editor
+                                                                    (stred :attribute))])
 
                                 (prelude :entity)
-                                (property (str (when reverse?
-                                                 "<- ")
-                                               (or (:stream-id attribute)
-                                                   :tmp)
-                                               "/"
-                                               (label db attribute))
-
-                                          [entity-attribute-editor
-                                           db
-                                           entity
-                                           attribute
-                                           nil
-                                           {:reverse? reverse?}])
+                                (outline-property db
+                                                  attribute
+                                                  [entity-attribute-editor
+                                                   db
+                                                   entity
+                                                   attribute
+                                                   nil
+                                                   {:reverse? reverse?}])
 
                                 (prelude :array)
-                                (property (str (when reverse?
-                                                 "<- ")
-                                               (or (:stream-id attribute)
-                                                   :tmp)
-                                               "/"
-                                               (label db attribute))
-
-                                          (ver 0
-                                               (text "[")
-                                               [entity-array-attribute-editor-2
-                                                db
-                                                entity
-                                                attribute]
-                                               (text "]")))
+                                (outline-property db
+                                                  attribute
+                                                  (ver 0
+                                                       (text "[")
+                                                       [entity-array-attribute-editor-2
+                                                        db
+                                                        entity
+                                                        attribute]
+                                                       (text "]")))
 
                                 (text (str (pr-str editor)
                                            " "
@@ -2568,7 +2572,9 @@
                                                               (= range (prelude :entity)))
                                               :key-patterns [[#{:control} :r]]
                                               :run! (fn [_subtree]
-                                                      (transact! db [[:set editor (stred :reverse?) (not reverse?)]]))}]))}])))))
+                                                      (transact! db [[:set editor (stred :reverse?) (not reverse?)]]))}]))
+                         :show-empty-prompt? (starts-with? view-compiler/id
+                                                           @focused-node-id)}])))))
 
 ;; (defn notebook-view [db notebook]
 ;;   [array-editor
