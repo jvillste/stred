@@ -1886,7 +1886,8 @@
             value-entities (sort-entity-ids (if reverse?
                                               (concat (common/entities db attribute entity)
                                                       (common/entities-referring-with-sequence db entity))
-                                              (common/values db entity attribute)))]
+                                              (common/values db entity attribute)))
+            entity-attribute-editor-node-id view-compiler/id]
         (-> (ver 0
                  (map-indexed (fn [index value-entity]
                                 (-> (highlight (value-view db value-entity)
@@ -1911,59 +1912,44 @@
                                                             text))})
 
                     (fn commands [results]
-                      (concat (for [new-value-entity (:entities results)]
-                                {:view (value-view db new-value-entity)
-                                 :available? true
-                                 :run! (fn [_subtree]
-                                         (when (not (contains? (hash-set value-entities)
-                                                               new-value-entity))
-                                           (transact! db [(if reverse?
-                                                            [:add new-value-entity attribute entity]
-                                                            [:add entity attribute new-value-entity])])
-                                           (swap! state-atom
-                                                  assoc
-                                                  :selected-index (->> (conj value-entities new-value-entity)
-                                                                       (sort-entity-ids)
-                                                                       medley/indexed
-                                                                       (medley/find-first #(= new-value-entity (second %)))
-                                                                       first)))
-                                         (swap! state-atom assoc :adding? false))})
+                      (let [focus-on-new-entity (fn [new-value-entity]
+                                                  (keyboard/handle-next-scene-graph! (fn [scene-graph]
+                                                                                       (let [new-selected-index (->> (conj value-entities new-value-entity)
+                                                                                                                     (sort-entity-ids)
+                                                                                                                     medley/indexed
+                                                                                                                     (medley/find-first #(= new-value-entity (second %)))
+                                                                                                                     first)]
+                                                                                         (->> (scene-graph/find-first-breath-first #(= entity-attribute-editor-node-id
+                                                                                                                                       (:id %))
+                                                                                                                                   scene-graph)
+                                                                                              (scene-graph/find-first-breath-first #(= [:value new-selected-index]
+                                                                                                                                       (:local-id %)))
+                                                                                              (scene-graph/find-first-breath-first :can-gain-focus?)
+                                                                                              (keyboard/set-focused-node!))))))]
+                        (concat (for [new-value-entity (:entities results)]
+                                  {:view (value-view db new-value-entity)
+                                   :available? true
+                                   :run! (fn [_subtree]
+                                           (when (not (contains? (hash-set value-entities)
+                                                                 new-value-entity))
+                                             (transact! db [(if reverse?
+                                                              [:add new-value-entity attribute entity]
+                                                              [:add entity attribute new-value-entity])])
+                                             (focus-on-new-entity new-value-entity))
+                                           (swap! state-atom assoc :adding? false))})
 
-                              [{:name "Create new entity"
-                                :available? true
-                                :key-patterns  [[#{:control} :c] [#{:control} :n]]
-                                :run! (fn [_subtree]
-                                        (let [temporary-id-resolution (transact! db (concat [[:add :tmp/new-entity (prelude :label) (:text results)]]
-                                                                                            (if reverse?
-                                                                                              [[:add :tmp/new-entity attribute entity]]
-                                                                                              [[:add entity attribute :tmp/new-entity]])))
-                                              new-value-entity (get temporary-id-resolution :tmp/new-entity)]
-                                          (swap! state-atom
-                                                 assoc
-                                                 :selected-index (->> (conj value-entities new-value-entity)
-                                                                      (sort-entity-ids)
-                                                                      medley/indexed
-                                                                      (medley/find-first #(= new-value-entity
-                                                                                             (second %)))
-                                                                      first))
-                                          (swap! state-atom assoc :adding? false)))}]))]
-                   #_[prompt ;; here
-                      db
-                      valid-types
-                      (fn on-new-entity [new-value-entity]
-                        (when (not (contains? (hash-set value-entities)
-                                              new-value-entity))
-                          (transact! db [(if reverse?
-                                           [:add new-value-entity attribute entity]
-                                           [:add entity attribute new-value-entity])])
-                          (swap! state-atom
-                                 assoc
-                                 :selected-index (->> (conj value-entities new-value-entity)
-                                                      (sort-entity-ids)
-                                                      medley/indexed
-                                                      (medley/find-first #(= new-value-entity (second %)))
-                                                      first)))
-                        (swap! state-atom assoc :adding? false))]))
+                                [{:name "Create new entity"
+                                  :available? true
+                                  :key-patterns  [[#{:control} :c] [#{:control} :n]]
+                                  :run! (fn [_subtree]
+                                          (let [temporary-id-resolution (:temporary-id-resolution (transact! db (concat [[:add :tmp/new-entity (prelude :label) (:text results)]]
+                                                                                                                        (if reverse?
+                                                                                                                          [[:add :tmp/new-entity attribute entity]]
+                                                                                                                          [[:add entity attribute :tmp/new-entity]]))))
+
+                                                new-value-entity (get temporary-id-resolution :tmp/new-entity)]
+                                            (focus-on-new-entity new-value-entity)
+                                            (swap! state-atom assoc :adding? false)))}])))]))
             (assoc :command-set (entity-attribute-editor-command-set state-atom
                                                                      db
                                                                      entity
@@ -2985,8 +2971,6 @@
                                                                      :available? true
                                                                      :key-patterns [[#{:meta} :n]]
                                                                      :run! (fn [_subtree]
-                                                                             (prn "move focus down") ;; TODO: remove me
-
                                                                              (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
                                                                                                    (partial scene-graph/closest-vertical-nodes
                                                                                                             @focused-node-id)
