@@ -867,22 +867,18 @@
 
   (if (or (entity-id/entity-id? value)
           (temporary-ids/temporary-id? value))
-    (chor 10
-          (when-let [type (db-common/value db
-                                           value
-                                           (prelude :type-attribute))]
-            #_(text (if (entity-id/entity-id? type)
-                      (str "["
-                           (:stream-id type)
-                           "/"
-                           (label db type)
-                           "]")
-                      (str type)))
-            (box (text (or (label db type)
-                           (value-string db type)))
-                 {:fill-color [200 200 255 255]}))
-          (layouts/with-maximum-size 1200 nil (text (or (label db value)
-                                                        (value-string db value)))))
+    (hor 10
+         (let [type (db-common/value db
+                                     value
+                                     (prelude :type-attribute))]
+           (box (if type
+                  (text (or (label db type)
+                            (value-string db type)))
+                  {:width 35
+                   :height 35})
+                {:fill-color [200 200 255 255]}))
+         (layouts/with-maximum-size 1200 nil (text (or (label db value)
+                                                       (value-string db value)))))
     (text (pr-str value))))
 
 (defn scene-graph-to-string [scene-graph]
@@ -1830,7 +1826,6 @@
                                               (filter (fn [change]
                                                         (= (common/change-entity change)
                                                            (nth values (:selected-index state))))))
-                                         #_[:remove (nth values (:selected-index state)) attribute entity]
                                          [[:remove entity attribute (nth values
                                                                          (:selected-index state))]]))
 
@@ -2829,10 +2824,10 @@
                                                   ;;       (text (entity-string (:branch state) (:entity state))))
 
 
-                                                  (text (str "Focused entity: " (value-string db @focused-entity)))
-                                                  (text (str "Focused node:" (if-let [focused-node-id (-> @keyboard/state-atom :focused-node :id) ]
-                                                                               (pr-str focused-node-id)
-                                                                               "")))
+                                                  ;; (text (str "Focused entity: " (value-string db @focused-entity)))
+                                                  ;; (text (str "Focused node:" (if-let [focused-node-id (-> @keyboard/state-atom :focused-node :id) ]
+                                                  ;;                              (pr-str focused-node-id)
+                                                  ;;                              "")))
 
                                                   ;; (text (if-let [focused-entity @focused-entity #_(-> @keyboard/state-atom :focused-node :entity)]
                                                   ;;         (entity-string (:branch state) focused-entity)
@@ -2904,7 +2899,8 @@
                                          ;; (header "Concepts")
                                          ;; (entity-list state-atom (argumentation :concept))
 
-                                         (when (not (:show-help? state))
+                                         (when (and (not (:show-help? state))
+                                                    (:show-uncommitted-changes? state))
                                            (ver 0
                                                 (header "Uncommitted changes")
                                                 (transaction-view (:branch state) (branch-changes (:branch state)) #_the-branch-changes)
@@ -2985,7 +2981,7 @@
 
                                                                              (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
                                                                                                    (partial scene-graph/closest-vertical-nodes
-                                                                                                            (keyboard/focused-node-id @keyboard/state-atom))
+                                                                                                            @focused-node-id)
                                                                                                    inc
                                                                                                    keyboard/cycle-position))}
 
@@ -2993,9 +2989,9 @@
                                                                      :available? true
                                                                      :key-patterns [[#{:meta} :p]]
                                                                      :run! (fn [_subtree]
-                                                                             (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
+                                                                             (keyboard/move-focus! scene-graph/current-scene-graph
                                                                                                    (partial scene-graph/closest-vertical-nodes
-                                                                                                            (keyboard/focused-node-id @keyboard/state-atom))
+                                                                                                            @focused-node-id)
                                                                                                    dec
                                                                                                    keyboard/cycle-position))}
 
@@ -3108,7 +3104,13 @@
                                                                      :available? true
                                                                      :key-patterns [[#{:control} :h]]
                                                                      :run! (fn [_subtree]
-                                                                             (swap! state-atom update :show-help? not))}]}))]))
+                                                                             (swap! state-atom update :show-help? not))}
+
+                                                                    {:name "toggle uncommitted changes"
+                                                                     :available? true
+                                                                     :key-patterns [[#{:control} :g]]
+                                                                     :run! (fn [_subtree]
+                                                                             (swap! state-atom update :show-uncommitted-changes? not))}]}))]))
 
                          )
 
@@ -3382,7 +3384,8 @@
                                             :entity nil ;; entity
                                             :previous-entities []
                                             :undoed-transactions '()
-                                            :show-help? false}
+                                            :show-help? false
+                                            :show-uncommitted-changes? false}
                                            #_(let [entity (-> branch
                                                               (transact!
                                                                [#_
@@ -3500,7 +3503,8 @@
                                                                             ;; "stred"
                                                                             ;; test-stream-path
                                                                             ;; "health" "temp/health"
-                                                                            "koe" "temp/koe3"
+                                                                            ;; "koe" "temp/koe3"
+                                                                            "koe" "temp/koe4"
                                                                             index-definitions))
 
                                                branch (create-stream-db-branch "uncommitted" (db-common/deref stream-db))
