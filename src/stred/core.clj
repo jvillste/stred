@@ -598,7 +598,8 @@
                                                                :reverse?])
                                        [(attribute (stred :editors) "editors" :array {(prelude :component?) true})
                                         (attribute (stred :views) "views" :array {(prelude :component?) true})
-                                        (attribute (stred :lens) "lens" :entity {(prelude :component?) true})])))
+                                        (attribute (stred :lens) "lens" :entity {(prelude :component?) true})
+                                        (attribute (stred :value-lens) "value-lens" :entity {(prelude :component?) true})])))
 
 (defn search-entities
   ([db query-string]
@@ -1846,7 +1847,8 @@
                          (swap! state-atom assoc :adding? false))}
 
                 {:name "remove selected"
-                 :available? (not (empty? values))
+                 :available? (and (not (empty? values))
+                                  (:selected-index state))
                  :key-patterns [[#{:control} :d]]
                  :run! (fn [subtree]
                          (transact! db (if reverse?
