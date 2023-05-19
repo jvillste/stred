@@ -872,18 +872,18 @@
 
   (if (or (entity-id/entity-id? value)
           (temporary-ids/temporary-id? value))
-    (hor 10
-         (let [type (db-common/value db
-                                     value
-                                     (prelude :type-attribute))]
-           (box (if type
-                  (text (or (label db type)
-                            (value-string db type)))
-                  {:width 35
-                   :height 35})
-                {:fill-color [200 200 255 255]}))
-         (layouts/with-maximum-size column-width nil (text (or (label db value)
-                                                               (value-string db value)))))
+    (chor 10
+          (let [type (db-common/value db
+                                      value
+                                      (prelude :type-attribute))]
+            (box (if type
+                   (text (or (label db type)
+                             (value-string db type)))
+                   {:width 35
+                    :height 35})
+                 {:fill-color [200 200 255 255]}))
+          (layouts/with-maximum-size column-width nil (text (or (label db value)
+                                                                (value-string db value)))))
     (text (pr-str value))))
 
 (defn scene-graph-to-string [scene-graph]
@@ -2045,6 +2045,7 @@
     (assoc-last :entity entity
                 (ver 10
                      (value-view db entity)
+                     ;;                     (text (str "Lens:" (pr-str lens)))
                      (layouts/with-margins 0 0 0 40
                        [array-editor
                         db
@@ -2077,7 +2078,8 @@
                                                                                          (stred :value-lens) :tmp/new-lens}))
                                           (map-to-transaction/map-to-statements (merge {:dali/id :tmp/new-editor
                                                                                         (prelude :type-attribute) (stred :editor)
-                                                                                        (stred :attribute) (:entity new-item)}
+                                                                                        (stred :attribute) (:entity new-item)
+                                                                                        (stred :value-lens) :tmp/new-lens}
                                                                                        (when (:reverse? new-item)
                                                                                          {(stred :reverse?) true}))))})
                         (fn run-query [text]
@@ -2089,10 +2091,12 @@
                                                                     text)))})
 
                         (fn available-items [results]
-                          #_[{:entity (prelude :label)
-                              :view (value-view db (prelude :label))}]
-                          (let [existing-attributes-set (set (common/entity-attributes db entity))
-                                existing-reverse-attributes-set (set (common/reverse-entity-attributes db entity))
+                          (let [existing-attributes-set (->> (set (common/entity-attributes db entity))
+                                                             (remove (fn [attribute]
+                                                                       (= "stred" (:stream-id attribute)))))
+                                existing-reverse-attributes-set (->> (set (common/reverse-entity-attributes db entity))
+                                                                     (remove (fn [attribute]
+                                                                               (= "stred" (:stream-id attribute)))))
                                 all-existing-attributes (set/union existing-attributes-set
                                                                    existing-reverse-attributes-set)
                                 matched-attribute? (fn [attribute]
@@ -2860,10 +2864,10 @@
                                                   ;;       (text (entity-string (:branch state) (:entity state))))
 
 
-                                                  ;; (text (str "Focused entity: " (value-string db @focused-entity)))
-                                                  ;; (text (str "Focused node:" (if-let [focused-node-id (-> @keyboard/state-atom :focused-node :id) ]
-                                                  ;;                              (pr-str focused-node-id)
-                                                  ;;                              "")))
+                                                  (text (str "Focused entity: " (value-string db @focused-entity)))
+                                                  (text (str "Focused node:" (if-let [focused-node-id (-> @keyboard/state-atom :focused-node :id) ]
+                                                                               (pr-str focused-node-id)
+                                                                               "")))
 
                                                   ;; (text (if-let [focused-entity @focused-entity #_(-> @keyboard/state-atom :focused-node :entity)]
                                                   ;;         (entity-string (:branch state) focused-entity)
@@ -3520,8 +3524,9 @@
 
   (create-stream-db-on-disk
    ;; "stred" test-stream-path
-   "health" "temp/health"
+;;   "health" "temp/health"
    ;; "koe" "temp/koe2"
+    "koe" "temp/koe5"
    index-definitions)
   )
 
@@ -3538,7 +3543,8 @@
                                                                             ;; test-stream-path
                                                                             ;; "health" "temp/health"
                                                                             ;; "koe" "temp/koe3"
-                                                                            "koe" "temp/koe5"
+                                                                            "koe" "temp/koe4"
+                                                                            ;; "koe" "temp/koe5"
                                                                             index-definitions))
 
                                                branch (create-stream-db-branch "uncommitted" (db-common/deref stream-db))
