@@ -872,18 +872,19 @@
 
   (if (or (entity-id/entity-id? value)
           (temporary-ids/temporary-id? value))
-    (chor 10
-          (let [type (db-common/value db
-                                      value
-                                      (prelude :type-attribute))]
-            (box (if type
-                   (text (or (label db type)
-                             (value-string db type)))
-                   {:width 35
-                    :height 35})
-                 {:fill-color [200 200 255 255]}))
-          (layouts/with-maximum-size column-width nil (text (or (label db value)
-                                                                (value-string db value)))))
+    (hor 10
+         (let [type (db-common/value db
+                                     value
+                                     (prelude :type-attribute))]
+           (layouts/with-margins 5 0 0 0
+             (box (if type
+                    (text (or (label db type)
+                              (value-string db type)))
+                    {:width 30
+                     :height 30})
+                  {:fill-color [200 200 255 255]})))
+         (layouts/with-maximum-size column-width nil (text (or (label db value)
+                                                               (value-string db value)))))
     (text (pr-str value))))
 
 (defn scene-graph-to-string [scene-graph]
@@ -907,8 +908,9 @@
                           :validate-new-text validate-new-text}])
 
 (defn text-editor [text on-text-change]
-  (box (layouts/with-minimum-size 300 nil
-         (bare-text-editor text on-text-change))))
+  (box (layouts/with-maximum-size column-width nil
+         (layouts/with-minimum-size 300 nil
+          (bare-text-editor text on-text-change)))))
 
 (defn button-mouse-event-handler [on-pressed node event]
   (when (= :mouse-clicked (:type event))
@@ -1768,7 +1770,9 @@
                ;; :can-gain-focus? true
                )))))))
 
-(defn entity-array-attribute-editor-2 [db entity attribute]
+(declare outline-view)
+
+(defn entity-array-attribute-editor-2 [db entity attribute value-lens]
   [array-editor
    db
    entity
@@ -1806,7 +1810,7 @@
                  :label (:text results)}])))
 
    (fn item-view [db entity]
-     (value-view db entity))
+     [outline-view db entity value-lens])
    {:allow-array-spreading? true}])
 
 
@@ -1918,8 +1922,6 @@
   (= (take (count sequence-1)
            sequence-2)
      sequence-1))
-
-(declare outline-view)
 
 (defn entity-attribute-editor [_db _entity _attribute _value-lens & _options]
   (let [state-atom (dependable-atom/atom "entity-attribute-editor-state"
@@ -2091,12 +2093,14 @@
                                                                     text)))})
 
                         (fn available-items [results]
-                          (let [existing-attributes-set (->> (set (common/entity-attributes db entity))
+                          (let [existing-attributes-set (->> (common/entity-attributes db entity)
                                                              (remove (fn [attribute]
-                                                                       (= "stred" (:stream-id attribute)))))
-                                existing-reverse-attributes-set (->> (set (common/reverse-entity-attributes db entity))
+                                                                       (= "stred" (:stream-id attribute))))
+                                                             (set))
+                                existing-reverse-attributes-set (->> (common/reverse-entity-attributes db entity)
                                                                      (remove (fn [attribute]
-                                                                               (= "stred" (:stream-id attribute)))))
+                                                                               (= "stred" (:stream-id attribute))))
+                                                                     (set))
                                 all-existing-attributes (set/union existing-attributes-set
                                                                    existing-reverse-attributes-set)
                                 matched-attribute? (fn [attribute]
@@ -2210,13 +2214,22 @@
                                            value-lens
                                            {:reverse? reverse?}]
 
+                                          (prelude :type-type) ;; TODO make type-type a subtype of entity
+                                          [entity-attribute-editor
+                                           db
+                                           entity
+                                           attribute
+                                           value-lens
+                                           {:reverse? reverse?}]
+
                                           (prelude :array)
                                           (ver 0
                                                (text "[")
                                                [entity-array-attribute-editor-2
                                                 db
                                                 entity
-                                                attribute]
+                                                attribute
+                                                value-lens]
                                                (text "]"))
 
                                           (text (str (pr-str editor)
@@ -2864,10 +2877,10 @@
                                                   ;;       (text (entity-string (:branch state) (:entity state))))
 
 
-                                                  (text (str "Focused entity: " (value-string db @focused-entity)))
-                                                  (text (str "Focused node:" (if-let [focused-node-id (-> @keyboard/state-atom :focused-node :id) ]
-                                                                               (pr-str focused-node-id)
-                                                                               "")))
+                                                  ;; (text (str "Focused entity: " (value-string db @focused-entity)))
+                                                  ;; (text (str "Focused node:" (if-let [focused-node-id (-> @keyboard/state-atom :focused-node :id) ]
+                                                  ;;                              (pr-str focused-node-id)
+                                                  ;;                              "")))
 
                                                   ;; (text (if-let [focused-entity @focused-entity #_(-> @keyboard/state-atom :focused-node :entity)]
                                                   ;;         (entity-string (:branch state) focused-entity)
