@@ -720,7 +720,13 @@
                                     [attribute value])))
 
 (defn label [db entity]
-  (db-common/value db entity (prelude :label)))
+  (if (:show-entity-ids? @application/state-atom)
+    (str (if (entity-id/entity-id? entity)
+           (str (:stream-id entity) "/" (:id entity))
+           entity)
+         ": "
+         (db-common/value db entity (prelude :label)))
+    (db-common/value db entity (prelude :label))))
 
 (defn attributes [db entity]
   (->> (db-common/propositions db
@@ -1508,11 +1514,11 @@
                                                                                        array))]])
 
                                  (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                      (->> (scene-graph/find-first #(= (:id subtree)
-                                                                                                       (:id %))
-                                                                                                   scene-graph)
-                                                                           (scene-graph/find-first-child #(= [:value (dec (:selected-index state))]
-                                                                                                             (:local-id %)))
+                                                                      (->> (scene-graph/find-first-breath-first #(= (:id subtree)
+                                                                                                                    (:id %))
+                                                                                                                scene-graph)
+                                                                           (scene-graph/find-first-breath-first #(= [:value (dec (:selected-index state))]
+                                                                                                                    (:local-id %)))
                                                                            (keyboard/set-focused-node!)))))}
 
                         {:name "move down"
@@ -1525,11 +1531,11 @@
                                                                                         array))]])
 
                                  (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                      (->> (scene-graph/find-first #(= (:id subtree)
-                                                                                                       (:id %))
-                                                                                                   scene-graph)
-                                                                           (scene-graph/find-first-child #(= [:value (inc (:selected-index state))]
-                                                                                                             (:local-id %)))
+                                                                      (->> (scene-graph/find-first-breath-first #(= (:id subtree)
+                                                                                                                    (:id %))
+                                                                                                                scene-graph)
+                                                                           (scene-graph/find-first-breath-first #(= [:value (inc (:selected-index state))]
+                                                                                                                    (:local-id %)))
                                                                            (keyboard/set-focused-node!)))))}]
                        (when allow-array-spreading?
                          [{:name "spread array"
@@ -2639,6 +2645,10 @@
 ;; an outline view should have a value editor, but it should only be
 ;; added on demand. value editor could be a table or an outline view.
 
+(derivation/def-derivation focused-entity
+  (:entity (scene-graph/find-first-breath-first :entity
+                                                (-> @keyboard/state-atom :focused-node))))
+
 (defn notebook-view [db notebook]
   [array-editor
    db
@@ -2719,6 +2729,19 @@
                                view
                                (prelude :type-attribute))
        (stred :outline-view)
+       ^{:command-set {:name "notebook"
+                       :commands [{:name "add focused entity into the notebook"
+                                   :available? @focused-entity
+                                   :key-patterns [[#{:control :meta} :a]]
+                                   :run! (fn [_subtree]
+                                           (transact! db (concat (map-to-transaction/map-to-statements {:dali/id :tmp/new-view
+                                                                                                        (prelude :type-attribute) (stred :outline-view)
+                                                                                                        (stred :lens) {:dali/id :tmp/new-lens}
+                                                                                                        (stred :entity) @focused-entity})
+                                                                 [[:set notebook (stred :views) (vec (conj (common/value db
+                                                                                                                         notebook
+                                                                                                                         (stred :views))
+                                                                                                           :tmp/new-view))]])))}]}}
        [outline-view db
         (db-common/value db
                          view
@@ -2744,10 +2767,6 @@
                                       statement))
                (assoc :mouse-event-handler [on-click-mouse-event-handler (partial open-entity! state-atom statement)])))))
 
-
-(derivation/def-derivation focused-entity
-  (:entity (scene-graph/find-first-breath-first :entity
-                                                (-> @keyboard/state-atom :focused-node))))
 
 
 (def the-branch-changes #{[:add {:id 0, :stream-id "base"} {:stream-id "stred", :id 3} [:tmp/id-1]]
@@ -2985,8 +3004,16 @@
                                                                      :available? true
                                                                      :key-patterns [[#{:meta} :e]]
                                                                      :run! (fn [_subtree]
-                                                                             (swap! application/state-atom
+                                                                             (swap! application/application-loop-state-atom
                                                                                     update :highlight-view-call-cache-misses? not))}
+                                                                    {:name "toggle viewing of entity ids"
+                                                                     :available? true
+                                                                     :key-patterns [[#{:meta} :w]]
+                                                                     :run! (fn [_subtree]
+                                                                             (prn "toggle viewing of entity ids") ;; TODO: remove me
+
+                                                                             (swap! application/state-atom
+                                                                                    update :show-entity-ids? not))}
                                                                     {:name "descent focus"
                                                                      :available? true
                                                                      :key-patterns [[#{:meta} :d]]
