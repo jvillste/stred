@@ -1508,7 +1508,7 @@
                         {:name "move up"
                          :available? (and (:selected-index state)
                                           (< 0 (:selected-index state)))
-                         :key-patterns [[#{:control} :p]]
+                         :key-patterns [[#{:meta} :p]]
                          :run! (fn [subtree]
                                  (transact! db [[:set entity attribute (vec (move-left (:selected-index state)
                                                                                        array))]])
@@ -1525,7 +1525,7 @@
                          :available? (and (:selected-index state)
                                           (< (:selected-index state)
                                              (dec (count array))))
-                         :key-patterns [[#{:control} :n]]
+                         :key-patterns [[#{:meta} :n]]
                          :run! (fn [subtree]
                                  (transact! db [[:set entity attribute (vec (move-right (:selected-index state)
                                                                                         array))]])
@@ -2386,7 +2386,7 @@
 
 
 (defn command-handler-keyboard-event-handler [state-atom focused-subtrees-with-command-sets _scene-graph event]
-  (if (and (= :descent (:phase event))
+  (if (and (= :ascent (:phase event))
            (= :key-pressed (:type event)))
     (if (empty? focused-subtrees-with-command-sets)
       event
@@ -3010,8 +3010,6 @@
                                                                      :available? true
                                                                      :key-patterns [[#{:meta} :w]]
                                                                      :run! (fn [_subtree]
-                                                                             (prn "toggle viewing of entity ids") ;; TODO: remove me
-
                                                                              (swap! application/state-atom
                                                                                     update :show-entity-ids? not))}
                                                                     {:name "descent focus"
@@ -3035,7 +3033,7 @@
 
                                                                     {:name "move focus left"
                                                                      :available? true
-                                                                     :key-patterns [[#{:meta} :b]]
+                                                                     :key-patterns [[#{:control} :b]]
                                                                      :run! (fn [_subtree]
                                                                              (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
                                                                                                    (partial scene-graph/closest-horizontal-nodes
@@ -3045,7 +3043,7 @@
 
                                                                     {:name "move focus right"
                                                                      :available? true
-                                                                     :key-patterns [[#{:meta} :f]]
+                                                                     :key-patterns [[#{:control} :f]]
                                                                      :run! (fn [_subtree]
                                                                              (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
                                                                                                    (partial scene-graph/closest-horizontal-nodes
@@ -3055,7 +3053,7 @@
 
                                                                     {:name "move focus down"
                                                                      :available? true
-                                                                     :key-patterns [[#{:meta} :n]]
+                                                                     :key-patterns [[#{:control} :n]]
                                                                      :run! (fn [_subtree]
                                                                              (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
                                                                                                    (partial scene-graph/closest-vertical-nodes
@@ -3065,7 +3063,7 @@
 
                                                                     {:name "move focus up"
                                                                      :available? true
-                                                                     :key-patterns [[#{:meta} :p]]
+                                                                     :key-patterns [[#{:control} :p]]
                                                                      :run! (fn [_subtree]
                                                                              (keyboard/move-focus! scene-graph/current-scene-graph
                                                                                                    (partial scene-graph/closest-vertical-nodes
