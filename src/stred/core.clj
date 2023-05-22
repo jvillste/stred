@@ -1251,7 +1251,7 @@
                          :available? (and (not (empty? commands))
                                           (< (:selected-index state)
                                              (dec (count commands))))
-                         :key-patterns [[#{:meta} :n]]
+                         :key-patterns [[#{:meta} :n]] ;; can not use control here because text editor uses it
                          :run! (fn [_subtree]
                                  (swap! state-atom
                                         update :selected-index inc))}
@@ -1260,7 +1260,7 @@
                          :available? (and (not (empty? commands))
                                           (< 0
                                              (:selected-index state)))
-                         :key-patterns [[#{:meta} :p]]
+                         :key-patterns [[#{:meta} :p]] ;; can not use control here because text editor uses it
                          :run! (fn [_subtree]
                                  (swap! state-atom
                                         update :selected-index dec))}])}))
@@ -1326,8 +1326,10 @@
                                                                                            {:fill-color (if (= index (:selected-index state))
                                                                                                           [240 240 255 255]
                                                                                                           [255 255 255 255])})
-                                                                                (assoc :mouse-event-handler [on-click-mouse-event-handler (fn []
-                                                                                                                                            ((:run! command)))])))
+                                                                                (assoc :mouse-event-handler (fn [node event]
+                                                                                                              (when (= :mouse-clicked (:type event))
+                                                                                                                ((:run! command) node))
+                                                                                                              event))))
                                                                           the-commands))))))
             (assoc :command-set (prompt-2-command-set state-atom
                                                       the-commands)))))))
@@ -1851,6 +1853,8 @@
          (reverse))
     []))
 
+(def page-size 5)
+
 (defn entity-attribute-editor-command-set [state-atom db entity attribute values reverse?]
   (let [state @state-atom]
     {:name "entity attribute editor"
@@ -1908,6 +1912,43 @@
                                                                    (scene-graph/find-first-child #(= :adding-prompt
                                                                                                      (:local-id %)))
                                                                    (scene-graph/find-first-child :can-gain-focus?)
+                                                                   (keyboard/set-focused-node!)))))}
+
+                {:name "next page"
+                 :available? (< (* page-size
+                                   (inc (:page state)))
+                                (count values))
+                 :key-patterns [[#{:control :meta} :n]]
+                 :run! (fn [subtree]
+                         (swap! state-atom
+                                (fn [state]
+                                  (-> state
+                                      (update :page inc)
+                                      (assoc :selected-index 0))))
+                         (keyboard/handle-next-scene-graph! (fn [scene-graph]
+                                                              (->> (scene-graph/find-first-breath-first #(= (:id subtree)
+                                                                                                            (:id %))
+                                                                                                        scene-graph)
+                                                                   (scene-graph/find-first-breath-first #(= [:value 0]
+                                                                                                            (:local-id %)))
+                                                                   (scene-graph/find-first-breath-first :can-gain-focus?)
+                                                                   (keyboard/set-focused-node!)))))}
+                {:name "previous page"
+                 :available? (< 0 (:page state))
+                 :key-patterns [[#{:control :meta} :p]]
+                 :run! (fn [subtree]
+                         (swap! state-atom
+                                (fn [state]
+                                  (-> state
+                                      (update :page dec)
+                                      (assoc :selected-index 0))))
+                         (keyboard/handle-next-scene-graph! (fn [scene-graph]
+                                                              (->> (scene-graph/find-first-breath-first #(= (:id subtree)
+                                                                                                            (:id %))
+                                                                                                        scene-graph)
+                                                                   (scene-graph/find-first-breath-first #(= [:value 0]
+                                                                                                            (:local-id %)))
+                                                                   (scene-graph/find-first-breath-first :can-gain-focus?)
                                                                    (keyboard/set-focused-node!)))))}]}))
 (defn assoc-last [& arguments]
   (apply assoc (last arguments)
@@ -1931,7 +1972,7 @@
 
 (defn entity-attribute-editor [_db _entity _attribute _value-lens & _options]
   (let [state-atom (dependable-atom/atom "entity-attribute-editor-state"
-                                         {})]
+                                         {:page 0})]
     (fn [db entity attribute value-lens & [{:keys [reverse?]}]]
       (let [state @state-atom
             value-entities (sort-entity-ids (if reverse?
@@ -1940,6 +1981,11 @@
                                               (common/values db entity attribute)))
             entity-attribute-editor-node-id view-compiler/id]
         (-> (ver 0
+                 (when (< page-size (count value-entities))
+                   (text (str (inc (:page state))
+                              "/"
+                              (int (Math/ceil (/ (count value-entities)
+                                                 page-size))))))
                  (map-indexed (fn [index value-entity]
                                 (highlight (with-meta [outline-view db value-entity value-lens]
                                              {:mouse-event-handler [focus-on-click-mouse-event-handler]
@@ -1952,7 +1998,10 @@
                                            {:fill-color (if (= index (:selected-index state))
                                                           [240 240 255 255]
                                                           [255 255 255 0])}))
-                              value-entities)
+                              (take page-size
+                                    (drop (* page-size
+                                             (:page state))
+                                          value-entities)))
                  (when (or (empty? value-entities)
                            (:adding? state))
                    ^{:local-id :adding-prompt}
@@ -1991,7 +2040,7 @@
 
                                 [{:name "Create new entity"
                                   :available? true
-                                  :key-patterns  [[#{:control} :c] [#{:control} :n]]
+                                  :key-patterns  [[#{:control} :c] [#{:control} :c]]
                                   :run! (fn [_subtree]
                                           (let [temporary-id-resolution (:temporary-id-resolution (transact! db (concat [[:add :tmp/new-entity (prelude :label) (:text results)]]
                                                                                                                         (if reverse?
@@ -2034,7 +2083,7 @@
 
              [{:name "Create new entity"
                :available? true
-               :key-patterns  [[#{:control} :c] [#{:control} :n]]
+               :key-patterns  [[#{:control} :c] [#{:control} :c]]
                :run! (fn [_subtree]
                        (transact! db (concat [[:add :tmp/new-entity (prelude :label) (:text results)]]
                                              (if reverse?
@@ -2150,7 +2199,7 @@
                                     (when (not (empty? (:text results)))
                                       [{:name "Create new attribute"
                                         :available? (constantly true)
-                                        :key-patterns [[#{:control} :c] [#{:control} :n]]
+                                        :key-patterns [[#{:control} :c] [#{:control} :c]]
                                         :label (:text results)}
 
                                        ;; {:name (str "Create text attribute " (:text results))
@@ -2694,7 +2743,7 @@
                [{:name "Create new entity"
                  :label (:text results)
                  :available? (constantly true)
-                 :key-patterns [[#{:control} :c] [#{:control} :n]]}])
+                 :key-patterns [[#{:control} :c] [#{:control} :c]]}])
              #_(for [[index type] (map-indexed vector
                                                (into [] (let [types (common/entities-from-ave (common/index db :ave)
                                                                                               (prelude :type-attribute)
@@ -2865,7 +2914,8 @@
   #_(logga.core/write (pr-str 'event-cache
                               (cache/stats cache/state)))
   (let [state @state-atom
-        db (:stream-db state)]
+        db (:stream-db state)
+        root-view-node-id view-compiler/id]
 
     (layouts/superimpose (visuals/rectangle-2 :fill-color [255 255 255 255])
                          (-> (layouts/with-margins 20 20 20 20
@@ -3015,7 +3065,7 @@
                                                                     {:name "descent focus"
                                                                      :available? true
                                                                      :key-patterns [[#{:meta} :d]]
-                                                                     :run! (fn [subtree]
+                                                                     :run! (fn [_subtree]
                                                                              (when-let [focusable-child (scene-graph/find-first-child :can-gain-focus?
                                                                                                                                       (scene-graph/find-first #(= (-> @keyboard/state-atom :focused-node-id)
                                                                                                                                                                   (:id %))
@@ -3097,13 +3147,16 @@
                                                                     {:name "move focus to prompt"
                                                                      :available? true
                                                                      :key-patterns [[#{:meta} :o]]
-                                                                     :run! (fn [subtree]
-                                                                             (focus-on-prompt subtree))}
+                                                                     :run! (fn [_subtree]
+                                                                             (focus-on-prompt (scene-graph/find-first-breath-first (fn [node]
+                                                                                                                                     (= root-view-node-id
+                                                                                                                                        (:id node)))
+                                                                                                                                   scene-graph/current-scene-graph)))}
 
                                                                     {:name "open previous entity"
                                                                      :available? (not (empty? (:previous-entities @state-atom)))
                                                                      :key-patterns [[#{:meta} :comma]]
-                                                                     :run! (fn [_subtree]
+                                                                     :run! (fn [subtree]
                                                                              (swap! state-atom (fn [state]
                                                                                                  (-> state
                                                                                                      (assoc :entity (:entity (last (:previous-entities state))))
@@ -3581,8 +3634,10 @@
                                                                             ;; test-stream-path
                                                                             ;; "health" "temp/health"
                                                                             ;; "koe" "temp/koe3"
-                                                                            "koe" "temp/koe4"
+                                                                            ;; "koe" "temp/koe4" ;; the switch
                                                                             ;; "koe" "temp/koe5"
+                                                                            ;; "koe" "temp/koe6"
+                                                                            "du" "temp/du"
                                                                             index-definitions))
 
                                                branch (create-stream-db-branch "uncommitted" (db-common/deref stream-db))
