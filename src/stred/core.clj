@@ -2115,7 +2115,7 @@
                                                                                                 (scene-graph/find-first-child :can-gain-focus?)
                                                                                                 (keyboard/set-focused-node!)))))}
                                              {:name "hide prompt"
-                                              :available? true
+                                              :available? (:show-empty-prompt? @state-atom)
                                               :key-patterns [[#{:meta} :a]]
                                               :run! (fn [_subtree]
                                                       (swap! state-atom assoc :show-empty-prompt? false))}]}
@@ -2173,7 +2173,8 @@
                                                                  (remove (fn [attribute]
                                                                            (= "stred" (:stream-id attribute))))
                                                                  (set))
-                                    existing-reverse-attributes-set (->> (common/reverse-entity-attributes db entity)
+                                    existing-reverse-attributes-set (->> (concat (common/reverse-entity-attributes db entity)
+                                                                                 (common/entity-sequence-reference-attributes db entity))
                                                                          (remove (fn [attribute]
                                                                                    (= "stred" (:stream-id attribute))))
                                                                          (set))
@@ -2745,110 +2746,110 @@
                                                   (-> @keyboard/state-atom :focused-node))))
 
   (defn notebook-view [db notebook]
-    [array-editor
-     db
-     notebook
-     (stred :views)
+    (assoc-last :command-set {:name "notebook"
+                              :commands [{:name "add focused entity into the notebook"
+                                          :available? @focused-entity
+                                          :key-patterns [[#{:control :meta} :a]]
+                                          :run! (fn [_subtree]
+                                                  (transact! db (concat (map-to-transaction/map-to-statements {:dali/id :tmp/new-view
+                                                                                                               (prelude :type-attribute) (stred :outline-view)
+                                                                                                               (stred :lens) {:dali/id :tmp/new-lens}
+                                                                                                               (stred :entity) @focused-entity})
+                                                                        [[:set notebook (stred :views) (vec (conj (common/value db
+                                                                                                                                notebook
+                                                                                                                                (stred :views))
+                                                                                                                  :tmp/new-view))]])))}]}
+                (ver 0 [array-editor
+                        db
+                        notebook
+                        (stred :views)
 
-     (fn item-removal-transaction [view]
-       (common/changes-to-remove-component-tree (common/deref db)
-                                                view))
+                        (fn item-removal-transaction [view]
+                          (common/changes-to-remove-component-tree (common/deref db)
+                                                                   view))
 
-     (fn new-item-transaction [new-item]
-       {:item-id :tmp/new-view
-        :transaction (if (:entity new-item)
-                       (map-to-transaction/map-to-statements {:dali/id :tmp/new-view
-                                                              (prelude :type-attribute) (stred :outline-view)
-                                                              (stred :lens) {:dali/id :tmp/new-lens}
-                                                              (stred :entity) (:entity new-item)})
-                       (concat (when (:type new-item)
-                                 [[:add
-                                   :tmp/new-entity
-                                   (prelude :type-attribute)
-                                   (:type new-item)]])
-                               [[:add
-                                 :tmp/new-entity
-                                 (prelude :label)
-                                 (:label new-item)]]
-                               (map-to-transaction/map-to-statements {:dali/id :tmp/new-view
-                                                                      (prelude :type-attribute) (stred :outline-view)
-                                                                      (stred :lens) {:dali/id :tmp/new-lens}
-                                                                      (stred :entity) :tmp/new-entity})))})
+                        (fn new-item-transaction [new-item]
+                          {:item-id :tmp/new-view
+                           :transaction (if (:entity new-item)
+                                          (map-to-transaction/map-to-statements {:dali/id :tmp/new-view
+                                                                                 (prelude :type-attribute) (stred :outline-view)
+                                                                                 (stred :lens) {:dali/id :tmp/new-lens}
+                                                                                 (stred :entity) (:entity new-item)})
+                                          (concat (when (:type new-item)
+                                                    [[:add
+                                                      :tmp/new-entity
+                                                      (prelude :type-attribute)
+                                                      (:type new-item)]])
+                                                  [[:add
+                                                    :tmp/new-entity
+                                                    (prelude :label)
+                                                    (:label new-item)]]
+                                                  (map-to-transaction/map-to-statements {:dali/id :tmp/new-view
+                                                                                         (prelude :type-attribute) (stred :outline-view)
+                                                                                         (stred :lens) {:dali/id :tmp/new-lens}
+                                                                                         (stred :entity) :tmp/new-entity})))})
 
-     (fn run-query [text]
-       {:text text
-        :entities (if (empty? text)
-                    []
-                    (distinct (search-entities db text)))})
+                        (fn run-query [text]
+                          {:text text
+                           :entities (if (empty? text)
+                                       []
+                                       (distinct (search-entities db text)))})
 
-     (fn available-items [results]
-       (concat (for [entity (:entities results)]
-                 {:entity entity
-                  :view (value-view db entity)})
-               (when (not (empty? (:text results)))
-                 [{:name "Create new entity"
-                   :label (:text results)
-                   :available? (constantly true)
-                   :key-patterns [[#{:control} :c] [#{:control} :c]]}])
-               #_(for [[index type] (map-indexed vector
-                                                 (into [] (let [types (common/entities-from-ave (common/index db :ave)
-                                                                                                (prelude :type-attribute)
-                                                                                                (prelude :type-type))]
-                                                            (concat (filter temporary-ids/temporary-id?
-                                                                            types)
-                                                                    (filter (fn [type]
-                                                                              (= "uncommitted"
-                                                                                 (:stream-id type)))
-                                                                            types)
-                                                                    (filter (fn [type]
-                                                                              (= "base"
-                                                                                 (:stream-id type)))
-                                                                            types)
-                                                                    [(prelude :type-type)
-                                                                     (prelude :attribute)]))))]
+                        (fn available-items [results]
+                          (concat (for [entity (:entities results)]
+                                    {:entity entity
+                                     :view (value-view db entity)})
+                                  (when (not (empty? (:text results)))
+                                    [{:name "Create new entity"
+                                      :label (:text results)
+                                      :available? (constantly true)
+                                      :key-patterns [[#{:control} :c] [#{:control} :c]]}])
+                                  #_(for [[index type] (map-indexed vector
+                                                                    (into [] (let [types (common/entities-from-ave (common/index db :ave)
+                                                                                                                   (prelude :type-attribute)
+                                                                                                                   (prelude :type-type))]
+                                                                               (concat (filter temporary-ids/temporary-id?
+                                                                                               types)
+                                                                                       (filter (fn [type]
+                                                                                                 (= "uncommitted"
+                                                                                                    (:stream-id type)))
+                                                                                               types)
+                                                                                       (filter (fn [type]
+                                                                                                 (= "base"
+                                                                                                    (:stream-id type)))
+                                                                                               types)
+                                                                                       [(prelude :type-type)
+                                                                                        (prelude :attribute)]))))]
 
-                   (let [key (nth [:j :k :l :ö :f :d :s :a :u :i :o :p :r :e :w :q]
-                                  index
-                                  nil)]
+                                      (let [key (nth [:j :k :l :ö :f :d :s :a :u :i :o :p :r :e :w :q]
+                                                     index
+                                                     nil)]
 
-                     {:name (str "Create " (:stream-id type) "/" (label db type))
-                      :available? (constantly true)
-                      :key-patterns (if key
-                                      [[#{:control} :c] [#{:control} key]]
-                                      nil)
-                      :type type
-                      :label (:text results)}))))
+                                        {:name (str "Create " (:stream-id type) "/" (label db type))
+                                         :available? (constantly true)
+                                         :key-patterns (if key
+                                                         [[#{:control} :c] [#{:control} key]]
+                                                         nil)
+                                         :type type
+                                         :label (:text results)}))))
 
-     (fn item-view [db view]
-       (condp = (db-common/value db
-                                 view
-                                 (prelude :type-attribute))
-         (stred :outline-view)
-         ^{:command-set {:name "notebook"
-                         :commands [{:name "add focused entity into the notebook"
-                                     :available? @focused-entity
-                                     :key-patterns [[#{:control :meta} :a]]
-                                     :run! (fn [_subtree]
-                                             (transact! db (concat (map-to-transaction/map-to-statements {:dali/id :tmp/new-view
-                                                                                                          (prelude :type-attribute) (stred :outline-view)
-                                                                                                          (stred :lens) {:dali/id :tmp/new-lens}
-                                                                                                          (stred :entity) @focused-entity})
-                                                                   [[:set notebook (stred :views) (vec (conj (common/value db
-                                                                                                                           notebook
-                                                                                                                           (stred :views))
-                                                                                                             :tmp/new-view))]])))}]}}
-         [outline-view db
-          (db-common/value db
-                           view
-                           (stred :entity))
-          (db-common/value db
-                           view
-                           (stred :lens))]
+                        (fn item-view [db view]
+                          (condp = (db-common/value db
+                                                    view
+                                                    (prelude :type-attribute))
+                            (stred :outline-view)
+                            [outline-view db
+                             (db-common/value db
+                                              view
+                                              (stred :entity))
+                             (db-common/value db
+                                              view
+                                              (stred :lens))]
 
-         (text (pr-str [view
-                        (db-common/value db
-                                         view
-                                         (prelude :type-attribute))]))))])
+                            (text (pr-str [view
+                                           (db-common/value db
+                                                            view
+                                                            (prelude :type-attribute))]))))])))
 
   (defn entity-list [state-atom entity-type]
     (ver 0 (for [statement (db-common/entities-from-ave (db-common/index (:branch @state-atom)
@@ -3123,7 +3124,7 @@
                                                                                   {:name "descent focus"
                                                                                    :available? true
                                                                                    :key-patterns [[[#{:meta} :d]]
-                                                                                                  [[#{:control} :e]]]
+                                                                                                  #_[[#{:control} :e]]]
                                                                                    :run! (fn [_subtree]
                                                                                            (when-let [focusable-child (scene-graph/find-first-child :can-gain-focus?
                                                                                                                                                     (scene-graph/find-first #(= (-> @keyboard/state-atom :focused-node-id)
@@ -3134,7 +3135,7 @@
                                                                                   {:name "ascent focus"
                                                                                    :available? true
                                                                                    :key-patterns [[[#{:meta} :a]]
-                                                                                                  [[#{:control} :a]]]
+                                                                                                  #_[[#{:control} :a]]]
                                                                                    :run! (fn [_subtree]
                                                                                            (when-let [focusable-ancestor (medley/find-first :can-gain-focus?
                                                                                                                                             (rest (reverse (scene-graph/path-to scene-graph/current-scene-graph
