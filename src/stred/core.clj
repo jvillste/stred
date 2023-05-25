@@ -873,24 +873,28 @@
 
 (def column-width 1200)
 
+(defn entity-value-type-view [db value value-view]
+  (hor 10
+       (let [type (db-common/value db
+                                   value
+                                   (prelude :type-attribute))]
+         (layouts/with-margins 5 0 0 0
+           (box (if type
+                  (text (or (label db type)
+                            (value-string db type)))
+                  {:width 30
+                   :height 30})
+                {:fill-color [200 200 255 255]})))
+       value-view))
+
 (defn value-view [db value]
   ;;(text (value-string db value))
 
   (if (or (entity-id/entity-id? value)
           (temporary-ids/temporary-id? value))
-    (hor 10
-         (let [type (db-common/value db
-                                     value
-                                     (prelude :type-attribute))]
-           (layouts/with-margins 5 0 0 0
-             (box (if type
-                    (text (or (label db type)
-                              (value-string db type)))
-                    {:width 30
-                     :height 30})
-                  {:fill-color [200 200 255 255]})))
-         (layouts/with-maximum-size column-width nil (text (or (label db value)
-                                                               (value-string db value)))))
+    (entity-value-type-view db value
+                            (layouts/with-maximum-size column-width nil (text (or (label db value)
+                                                                                  (value-string db value)))))
     (text (pr-str value))))
 
 (defn scene-graph-to-string [scene-graph]
@@ -2104,7 +2108,7 @@
         (assoc-last :entity entity
                     :command-set {:name "outline view"
                                   :commands [{:name "show prompt"
-                                              :available? true
+                                              :available? (not (:show-empty-prompt? @state-atom))
                                               :key-patterns [[#{:control} :e]]
                                               :run! (fn [_subtree]
                                                       (swap! state-atom assoc :show-empty-prompt? true)
@@ -2118,11 +2122,31 @@
                                               :available? (:show-empty-prompt? @state-atom)
                                               :key-patterns [[#{:meta} :a]]
                                               :run! (fn [_subtree]
-                                                      (swap! state-atom assoc :show-empty-prompt? false))}]}
+                                                      (swap! state-atom assoc :show-empty-prompt? false))}
+
+                                             {:name "toggle edit label"
+                                              :available? true
+                                              :key-patterns [[#{:control :meta} :e]]
+                                              :run! (fn [_subtree]
+                                                      (swap! state-atom update :edit-label? not)
+                                                      (when (:edit-label? @state-atom)
+                                                        (keyboard/handle-next-scene-graph! (fn [scene-graph]
+                                                                                             (->> (scene-graph/find-first-breath-first #(= outline-view-id
+                                                                                                                                           (:id %))
+                                                                                                                                       scene-graph)
+                                                                                                  (scene-graph/find-first-breath-first #(= :label-editor
+                                                                                                                                           (:local-id %)))
+                                                                                                  (scene-graph/find-first-child :can-gain-focus?)
+                                                                                                  (keyboard/set-focused-node!))))))}]}
 
 
                     (ver 10
-                         (value-view db entity)
+                         (if (:edit-label? @state-atom)
+                           (entity-value-type-view db
+                                                   entity
+                                                   ^{:local-id :label-editor}
+                                                   [text-attribute-editor db entity (prelude :label)])
+                           (value-view db entity))
                          ;;                     (text (str "Lens:" (pr-str lens)))
                          (layouts/with-margins 0 0 0 40
                            [array-editor
