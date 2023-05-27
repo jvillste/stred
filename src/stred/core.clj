@@ -2390,66 +2390,10 @@
     (text title
           {:font bold-font})))
 
-(defn keyboard-event-to-key-pattern [event]
-  [(into #{}
-         (remove nil?)
-         [(when (:control? event)
-            :control)
-          (when (:shift? event)
-            :shift)
-          (when (:alt? event)
-            :alt)
-          (when (:meta? event)
-            :meta)])
-   (:key event)])
-
-(deftest test-keyboard-event-to-key-pattern
-  (is (= [#{:shift} :n]
-         (keyboard-event-to-key-pattern {:key-code 78
-                                         :alt? false
-                                         :key :n
-                                         :control? false
-                                         :time 1646884415009
-                                         :phase :descent
-                                         :type :key-pressed
-                                         :source :keyboard
-                                         :shift? true
-                                         :is-auto-repeat nil
-                                         :character \n}))))
-
-
-
 (defn remove-runs [command-set]
   (update command-set :commands (fn [commands]
                                   (map #(dissoc % :run!)
                                        commands))))
-
-(defn key-patterns-prefix-match? [triggered-key-patterns command-key-patterns]
-  (if (vector? (first (first command-key-patterns)))
-    (some (fn [command-key-patterns]
-            (starts-with? triggered-key-patterns
-                          command-key-patterns))
-          command-key-patterns)
-    (starts-with? triggered-key-patterns
-                  command-key-patterns)))
-
-(deftest test-key-patterns-match?
-  (is (= true
-         (key-patterns-prefix-match? [[#{:meta} :a]]
-                                     [[#{:meta} :a] [#{:meta} :b]])))
-
-  (is (= false
-         (key-patterns-prefix-match? [[#{:meta} :a]]
-                                     [[#{:meta} :c] [#{:meta} :b]])))
-
-  (is (= true
-         (key-patterns-prefix-match? [[#{:meta} :a]]
-                                     [[[#{:meta} :c] [#{:meta} :b]]
-                                      [[#{:meta} :a] [#{:meta} :b]]])))
-  (is (= nil
-         (key-patterns-prefix-match? [[#{:meta} :a]]
-                                     [[[#{:meta} :c] [#{:meta} :b]]
-                                      [[#{:meta} :d] [#{:meta} :b]]]))))
 
 (defn command-help [triggered-key-patterns command-sets]
   (ver 20
@@ -2460,8 +2404,8 @@
               (text (:name command-set)
                     {:font bold-font})
               (for [command (filter (fn [command]
-                                      (key-patterns-prefix-match? triggered-key-patterns
-                                                                  (:key-patterns command)))
+                                      (keyboard/key-patterns-prefix-match? triggered-key-patterns
+                                                                           (:key-patterns command)))
                                     (:commands command-set))]
                 (text (str (pr-str (:key-patterns command))
                            " "
@@ -2518,7 +2462,7 @@
     (if (empty? focused-subtrees-with-command-sets)
       event
       (let [triggered-key-patterns (conj (:triggered-key-patterns @state-atom)
-                                         (keyboard-event-to-key-pattern event))
+                                         (keyboard/event-to-key-pattern event))
             possible-commands-and-subtrees (->> focused-subtrees-with-command-sets
                                                 (mapcat (fn [subtree]
                                                           (for [command (:commands (:command-set subtree))]
@@ -2526,21 +2470,14 @@
                                                              :command command})))
                                                 (filter (fn [command-and-subtree]
                                                           (and (:available? (:command command-and-subtree))
-                                                               (key-patterns-prefix-match? triggered-key-patterns
+                                                               (keyboard/key-patterns-prefix-match? triggered-key-patterns
                                                                                            (:key-patterns (:command command-and-subtree)))))))]
         (if (empty? possible-commands-and-subtrees)
           (do (swap! state-atom assoc :triggered-key-patterns [])
               event)
           (if-let [matched-command-and-subtree (medley/find-first (fn [command-and-subtree]
-
-                                                                    (let [command-key-patterns (:key-patterns (:command command-and-subtree))]
-                                                                      (if (vector? (first (first command-key-patterns)))
-                                                                        (some (fn [command-key-patterns]
-                                                                                (= triggered-key-patterns
-                                                                                   command-key-patterns))
-                                                                              command-key-patterns)
-                                                                        (= triggered-key-patterns
-                                                                           command-key-patterns))))
+                                                                    (keyboard/key-patterns-match? triggered-key-patterns
+                                                                                                  (:key-patterns (:command command-and-subtree))))
                                                                   possible-commands-and-subtrees)]
             (do ((:run! (:command matched-command-and-subtree))
                  (:subtree matched-command-and-subtree))
