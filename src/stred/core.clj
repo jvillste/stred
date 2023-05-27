@@ -698,6 +698,7 @@
 
 (def font (font/create-by-name "CourierNewPSMT" 40))
 (def bold-font (font/create-by-name "CourierNewPS-BoldMT" 40))
+(def header-font (font/create-by-name "CourierNewPS-BoldMT" 60))
 
 (defn text [string & [{:keys [font color] :or {font font
                                                color [0 0 0 255]}}]]
@@ -910,7 +911,7 @@
                           :text text
                           :on-text-change on-text-change}])
 
-(defn bare-text-editor-2 [text on-change & [{:keys [validate-new-text]}]]
+(defn bare-text-editor-2 [text on-change & [{:keys [validate-new-text font] :or {font font}}]]
   [text-area/text-area-3 {:style {:color [0 0 0 255]
                                   :font  font}
                           :text text
@@ -999,10 +1000,10 @@
                                             (fn []
                                               (swap! state-atom assoc :number given-number))]))))))
 
-(defn text-editor-2 [given-text _on-change!]
+(defn text-editor-2 [given-text _on-change! & [{:keys [font] :or {font font}}]]
   (let [state-atom (dependable-atom/atom {:text given-text
                                           :given-text given-text})]
-    (fn text-editor-2 [given-text on-change!]
+    (fn text-editor-2 [given-text on-change! & [{:keys [font] :or {font font}}]]
       (let [state @state-atom]
         (when (not (= given-text (:given-text state)))
           (swap! state-atom
@@ -1010,34 +1011,39 @@
                  :text given-text
                  :given-text given-text))
 
-        [focus-highlight (-> (box (layouts/with-minimum-size 80 nil
-                                    (bare-text-editor-2 (str (:text state))
-                                                        (fn on-change [old-state new-state]
-                                                          (let [text-changed? (not= (:text new-state)
-                                                                                    (:text old-state))]
+        (if (keyboard/sub-component-is-focused?)
+          [focus-highlight (-> (box (layouts/with-minimum-size 80 nil
+                                      (bare-text-editor-2 (str (:text state))
+                                                          (fn on-change [old-state new-state]
+                                                            (let [text-changed? (not= (:text new-state)
+                                                                                      (:text old-state))]
 
-                                                            (cond ;; (and text-changed?
-                                                              ;;      (empty? (:text new-state)))
-                                                              ;; (do (swap! state-atom assoc :text nil)
-                                                              ;;     new-state)
+                                                              (cond ;; (and text-changed?
+                                                                ;;      (empty? (:text new-state)))
+                                                                ;; (do (swap! state-atom assoc :text nil)
+                                                                ;;     new-state)
 
-                                                              text-changed?
-                                                              (do (swap! state-atom assoc :text (:text new-state))
-                                                                  new-state)
+                                                                text-changed?
+                                                                (do (swap! state-atom assoc :text (:text new-state))
+                                                                    new-state)
 
-                                                              :else
-                                                              new-state)))))
-                                  {:fill-color (if (not (= given-text (:text state)))
-                                                 [240 240 255 255]
-                                                 [255 255 255 255])})
-                             (assoc :keyboard-event-handler [editor-keyboard-event-handler
-                                                             (fn on-enter []
-                                                               (if (nil? (:text state))
-                                                                 (swap! state-atom assoc :text given-text)
-                                                                 (on-change! (:text state))))
+                                                                :else
+                                                                new-state)))
+                                                          {:font font}))
+                                    {:fill-color (if (not (= given-text (:text state)))
+                                                   [240 240 255 255]
+                                                   [255 255 255 255])})
+                               (assoc :keyboard-event-handler [editor-keyboard-event-handler
+                                                               (fn on-enter []
+                                                                 (if (nil? (:text state))
+                                                                   (swap! state-atom assoc :text given-text)
+                                                                   (on-change! (:text state))))
 
-                                                             (fn on-escape []
-                                                               (swap! state-atom assoc :text given-text))]))]))))
+                                                               (fn on-escape []
+                                                                 (swap! state-atom assoc :text given-text))]))]
+          (assoc (text given-text
+                       {:font font})
+                 :can-gain-focus? true))))))
 
 ;; (defn attribute-selector [db]
 ;;   (let [state-atom (dependable-atom/atom {:text ""})]
@@ -1058,7 +1064,7 @@
 ;;                                                                           (map (partial value-view db)
 ;;                                                                                (:results state)))))))))))
 
-(defn text-attribute-editor [db entity attribute]
+(defn text-attribute-editor [db entity attribute & [{:keys [font] :or {font font}}]]
   (layouts/with-maximum-size column-width nil
     ^{:local-id [entity attribute]}
     [text-editor-2
@@ -1066,7 +1072,8 @@
      (fn [new-value]
        (if (= "" new-value)
          (transact! db [[:remove entity attribute (db-common/value db entity attribute)]])
-         (transact! db [[:set entity attribute new-value]])))]))
+         (transact! db [[:set entity attribute new-value]])))
+     {:font font}]))
 
 (defn outline [db entity]
   (layouts/vertically-2 {:margin 10}
@@ -2791,7 +2798,7 @@
                                                                                                                               (stred :views))
                                                                                                                 :tmp/new-view))]])))}]}
               (ver 0
-                   [text-attribute-editor db notebook (prelude :label)]
+                   (layouts/with-margins 0 0 30 0 [text-attribute-editor db notebook (prelude :label) {:font header-font}])
                    [array-editor
                     db
                     notebook
@@ -3796,7 +3803,7 @@
                                                                             index-definitions))
 
                                                branch (create-stream-db-branch "uncommitted" (db-common/deref stream-db))
-;;                                               entity {:id 0, :stream-id "base"}
+                                               entity {:id 0, :stream-id "base"}
                                                ]
 
                                            ;;                                           (common/transact! branch the-branch-changes)
@@ -3810,7 +3817,7 @@
 
                                            {:stream-db stream-db
                                             :branch branch
-;;                                            :entity  entity
+                                            :entity  entity
                                             :previous-entities []
                                             :undoed-transactions '()
                                             :show-help? false
