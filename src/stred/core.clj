@@ -1525,6 +1525,7 @@
                          :run! (fn [subtree]
                                  (transact! db [[:set entity attribute (vec (move-left (:selected-index state)
                                                                                        array))]])
+                                 (swap! state-atom update :selected-index dec)
 
                                  (keyboard/handle-next-scene-graph! (fn [scene-graph]
                                                                       (->> (scene-graph/find-first-breath-first #(= (:id subtree)
@@ -1542,6 +1543,8 @@
                          :run! (fn [subtree]
                                  (transact! db [[:set entity attribute (vec (move-right (:selected-index state)
                                                                                         array))]])
+
+                                 (swap! state-atom update :selected-index inc)
 
                                  (keyboard/handle-next-scene-graph! (fn [scene-graph]
                                                                       (->> (scene-graph/find-first-breath-first #(= (:id subtree)
@@ -2471,7 +2474,7 @@
                                                 (filter (fn [command-and-subtree]
                                                           (and (:available? (:command command-and-subtree))
                                                                (keyboard/key-patterns-prefix-match? triggered-key-patterns
-                                                                                           (:key-patterns (:command command-and-subtree)))))))]
+                                                                                                    (:key-patterns (:command command-and-subtree)))))))]
         (if (empty? possible-commands-and-subtrees)
           (do (swap! state-atom assoc :triggered-key-patterns [])
               event)
