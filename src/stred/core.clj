@@ -2495,13 +2495,16 @@
     ^{:name "command-handler"}
     (fn [show-help? child]
       (let [focused-subtrees-with-command-sets @focused-subtrees-with-command-sets]
-        (-> (ver 20
-                 child
-                 (when show-help?
-                   (layouts/with-margins 0 0 0 20 [command-help
-                                                   (:triggered-key-patterns @state-atom)
-                                                   (map (comp remove-runs :command-set)
-                                                        focused-subtrees-with-command-sets)])))
+        (-> (if show-help?
+              (layouts/vertical-split (assoc (visuals/as-image child)
+                                             :local-id :root-view)
+                                      (assoc (visuals/as-image
+                                              [command-help
+                                               (:triggered-key-patterns @state-atom)
+                                               (map (comp remove-runs :command-set)
+                                                    focused-subtrees-with-command-sets)])
+                                             :local-id :command-help))
+              child)
             (assoc :keyboard-event-handler [command-handler-keyboard-event-handler
                                             state-atom
                                             focused-subtrees-with-command-sets]))))))
@@ -3128,7 +3131,8 @@
                                                                             (:type-attribute prelude)
                                                                             (:type-type prelude))]
                                                          (text (label db type))))
-                                                (assoc :command-set {:name "root"
+                                                (assoc :local-id :root-view
+                                                       :command-set {:name "root"
                                                                      :commands [{:name "toggle view cache misses highlighting"
                                                                                  :available? true
                                                                                  :key-patterns [[#{:meta} :e]]
@@ -3790,11 +3794,59 @@
       (root-view state-atom))))
 
 
+(comment
+  (layout/do-layout-for-size (layouts/grid [[{:width 10 :height 20}]
+                                            [{:width 100 :height 20}]])
+                             100
+                             100)
+  ) ;; TODO: remove me
+
+
+(defn state-demo []
+  (let [state (dependable-atom/atom 0)]
+    (fn []
+      (layouts/superimpose (visuals/rectangle [255 255 255 255] 0 0)
+                           (assoc (text (str "count" (deref state)))
+                                  :mouse-event-handler (fn [_node event]
+                                                         (when (= :mouse-clicked (:type event))
+                                                           (swap! state inc))
+                                                         event))))))
+
+(defn grid-demo []
+  #_(box (text "1" {:color [255 255 255 255]})
+         {:fill-color [255 0 0 255]})
+  (layouts/grid [[(box (text "this" {:color [255 255 255 255]})
+                       {:fill-color [255 0 0 255]})
+                  (box (text "foo" {:color [255 255 255 255]})
+                       {:fill-color [255 0 0 255]})
+                  (box (text "baz" {:color [255 255 255 255]})
+                       {:fill-color [255 0 0 255]})]
+
+                 [(box (text "bar" {:color [255 255 255 255]})
+                       {:fill-color [255 0 0 255]})
+                  (box (layouts/with-maximum-size 400 nil (text "this is something that is wrapped" {:color [255 255 255 255]}))
+                       {:fill-color [255 0 0 255]})
+                  (box (text "bar" {:color [255 255 255 255]})
+                       {:fill-color [255 0 0 255]})]]))
+
+(defn split-demo []
+  (layouts/vertical-split (visuals/as-image (ver 10
+                                                 (for [i (range 10)]
+                                                   (box (text (str "xxxxx upper" i))))))
+                          (visuals/as-image (ver 10
+                                                 (for [i (range 10)]
+                                                   (box (text (str "xx middle" i))))))
+                          (visuals/as-image (ver 10
+                                                 (for [i (range 10)]
+                                                   (box (text (str "lower" i))))))))
+
 (defn start []
   (println "\n\n------------ start -------------\n\n")
   (reset! event-channel-atom
           (application/start-application ;; ui
-           notebook-ui
+            ;; #'grid-demo
+            ;; #'notebook-ui
+           #'split-demo
            ;; performance-test-root
            ;; adapt-to-space-test-root
            :on-exit #(reset! event-channel-atom nil)))
