@@ -2495,16 +2495,15 @@
     ^{:name "command-handler"}
     (fn [show-help? child]
       (let [focused-subtrees-with-command-sets @focused-subtrees-with-command-sets]
-        (-> (if show-help?
-              (layouts/vertical-split (assoc (visuals/as-image child)
-                                             :local-id :root-view)
+        (-> (layouts/vertical-split (assoc (visuals/as-image child)
+                                           :local-id :root-view)
+                                    (when show-help?
                                       (assoc (visuals/as-image
                                               [command-help
                                                (:triggered-key-patterns @state-atom)
                                                (map (comp remove-runs :command-set)
                                                     focused-subtrees-with-command-sets)])
-                                             :local-id :command-help))
-              child)
+                                             :local-id :command-help)))
             (assoc :keyboard-event-handler [command-handler-keyboard-event-handler
                                             state-atom
                                             focused-subtrees-with-command-sets]))))))
@@ -3844,9 +3843,9 @@
   (println "\n\n------------ start -------------\n\n")
   (reset! event-channel-atom
           (application/start-application ;; ui
-            ;; #'grid-demo
-            ;; #'notebook-ui
-           #'split-demo
+           ;; #'grid-demo
+           #'notebook-ui
+           ;; #'split-demo
            ;; performance-test-root
            ;; adapt-to-space-test-root
            :on-exit #(reset! event-channel-atom nil)))
