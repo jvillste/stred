@@ -707,12 +707,11 @@
                   font))
 
 (defn box [content & [{:keys [fill-color] :or {fill-color [255 255 255 255]}}]]
-  (layouts/box 3
+  (layouts/box 2
                (visuals/rectangle-2 :fill-color fill-color
                                     :draw-color [200 200 200 255]
                                     :line-width 4
-                                    :corner-arc-radius 10
-                                    )
+                                    :corner-arc-radius 10)
                content))
 
 (defn entities [db attribute value]
@@ -875,18 +874,17 @@
 (def column-width 1200)
 
 (defn entity-value-type-view [db value value-view]
-  (hor 10
-       (let [type (db-common/value db
-                                   value
-                                   (prelude :type-attribute))]
-         (layouts/with-margins 5 0 0 0
-           (box (if type
-                  (text (or (label db type)
-                            (value-string db type)))
-                  {:width 30
-                   :height 30})
-                {:fill-color [200 200 255 255]})))
-       value-view))
+  (chor 10
+        (let [type (db-common/value db
+                                    value
+                                    (prelude :type-attribute))]
+          (box (if type
+                 (text (or (label db type)
+                           (value-string db type)))
+                 {:width 30
+                  :height 30})
+               {:fill-color [200 200 255 255]}))
+        value-view))
 
 (defn value-view [db value]
   ;;(text (value-string db value))
@@ -1331,7 +1329,8 @@
                                   (box (layouts/vertically-2 {}
                                                              (map-indexed (fn [index command]
                                                                             (-> (highlight (chor 40
-                                                                                                 (text (key-patterns-to-string (:key-patterns command)))
+                                                                                                 (when (not (empty? (:key-patterns command)))
+                                                                                                   (text (key-patterns-to-string (:key-patterns command))))
                                                                                                  (or (:view command)
                                                                                                      (text (:name command))))
                                                                                            {:fill-color (if (= index (:selected-index state))
