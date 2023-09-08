@@ -874,17 +874,17 @@
 (def column-width 1200)
 
 (defn entity-value-type-view [db value value-view]
-  (chor 10
-        (let [type (db-common/value db
-                                    value
-                                    (prelude :type-attribute))]
-          (box (if type
-                 (text (or (label db type)
-                           (value-string db type)))
-                 {:width 30
-                  :height 30})
-               {:fill-color [200 200 255 255]}))
-        value-view))
+  (hor 10
+       (let [type (db-common/value db
+                                   value
+                                   (prelude :type-attribute))]
+         (layouts/with-margins 5 0 0 0 (box (if type
+                                              (text (or (label db type)
+                                                        (value-string db type)))
+                                              {:width 30
+                                               :height 30})
+                                            {:fill-color [200 200 255 255]})))
+       value-view))
 
 (defn value-view [db value]
   ;;(text (value-string db value))
@@ -2105,7 +2105,7 @@
 
 (defn property [label editor]
   (hor 0
-       (layouts/with-margins 5 0 0 0
+       (layouts/with-margins 0 0 0 0
          (text (str label ":")
                {:font bold-font}))
        editor))
@@ -2149,7 +2149,7 @@
                                                                                                   (keyboard/set-focused-node!))))))}]}
 
 
-                    (ver 10
+                    (ver 0
                          (if (:edit-label? @state-atom)
                            (entity-value-type-view db
                                                    entity
@@ -3013,9 +3013,9 @@
                  :x x
                  :y y}]}
   (visuals/clip {:children [child]
-                     :x x
-                     :y y
-                     :local-id local-id}))
+                 :x x
+                 :y y
+                 :local-id local-id}))
 
 (defn root-view [state-atom]
   #_(logga.core/write (pr-str 'event-cache
@@ -3060,23 +3060,23 @@
                                                          ;;         ""))
 
                                                          (condp = entity-type
-                                                             ;; (argumentation :statement)
-                                                             ;; (statement-view state-atom (:entity state))
+                                                           ;; (argumentation :statement)
+                                                           ;; (statement-view state-atom (:entity state))
 
-                                                             ;; (argumentation :concept)
-                                                             ;; (concept-view state-atom (:entity state))
+                                                           ;; (argumentation :concept)
+                                                           ;; (concept-view state-atom (:entity state))
 
-                                                             ;; (argumentation :question)
-                                                             ;; (question-view state-atom (:entity state))
+                                                           ;; (argumentation :question)
+                                                           ;; (question-view state-atom (:entity state))
 
-                                                             ;; (argumentation :argument)
-                                                             ;; (argument-view state)
+                                                           ;; (argumentation :argument)
+                                                           ;; (argument-view state)
 
-                                                             (stred :notebook)
-                                                             (notebook-view (:branch state) (:entity state))
+                                                           (stred :notebook)
+                                                           (notebook-view (:branch state) (:entity state))
 
-                                                             (text (:entity state))
-                                                             #_[outline-view  (:branch state) (:entity state)]))))
+                                                           (text (:entity state))
+                                                           #_[outline-view  (:branch state) (:entity state)]))))
                                                 ;; [attribute-selector db]
 
                                                 #_(button "commit" (fn []
@@ -3782,11 +3782,11 @@
   (let [state-atom (dependable-atom/atom "ui-state"
                                          (let [stream-db (merge-stream-dbs #_(create-dependable-stream-db-in-memory "base" index-definitions)
                                                                            (doto (create-dependable-stream-db-in-memory "base" index-definitions)
-                                                                               (transact! (concat #_(map-to-transaction/map-to-statements {:dali/id :tmp/notebook
+                                                                             (transact! (concat #_(map-to-transaction/map-to-statements {:dali/id :tmp/notebook
                                                                                                                                          (prelude :type-attribute) (stred :notebook)})
-                                                                                                  stred-transaction
-                                                                                                  prelude-transaction
-                                                                                                  argumentation-schema-transaction)))
+                                                                                                stred-transaction
+                                                                                                prelude-transaction
+                                                                                                argumentation-schema-transaction)))
                                                                            (create-stream-db-on-disk
                                                                             ;; "stred"
                                                                             ;; test-stream-path
@@ -3828,9 +3828,9 @@
                                                                  :tmp/new-statement
                                                                  (prelude :type-attribute)
                                                                  (argumentation :statement)][:add
-                                                                 :tmp/new-statement
-                                                                 (prelude :label)
-                                                                 1]])
+                                                                                             :tmp/new-statement
+                                                                                             (prelude :label)
+                                                                                             1]])
                                                               :temporary-id-resolution
                                                               :tmp/new-statement)]
                                                {:stream-db stream-db
