@@ -257,6 +257,54 @@
   (prn label value)
   value)
 
+
+;; An index example:
+;;
+;; (defn statements-to-english-vehicle-changes [_indexes _transaction-number statements]
+;;   (mapcat (fn [statement]
+;;             (let [[operator entity attribute value] statement]
+;;               (if (= :vehicle-in-finnish attribute)
+;;                 [[operator
+;;                   (get {"mopo" "moped"
+;;                         "fillari" "a bike"}
+;;                        value)
+;;                   entity]]
+;;                 [])))
+;;           statements))
+
+;; (deftest test-statements-to-english-vehicle-changes
+;;   (let [db (doto (create-dependable-stream-db-in-memory "base"
+;;                                                         [db-common/eav-index-definition
+;;                                                          {:key :entities-by-english-vehicle-name
+;;                                                           :statements-to-changes statements-to-english-vehicle-changes}])
+;;              (transact! [[:add :entity-1 :vehicle-in-finnish "mopo"]
+;;                          [:add :entity-1 :price 1000]])
+;;              (transact! [[:add :entity-2 :vehicle-in-finnish "fillari"]
+;;                          [:add :entity-2 :price 100]])
+;;              (transact! [[:remove :entity-2 :vehicle-in-finnish "fillari"]
+;;                          [:add :entity-2 :vehicle-in-finnish "mopo"]]))]
+
+;;     (is (= [["a bike" :entity-2 1 :add]
+;;             ["a bike" :entity-2 2 :remove]
+;;             ["moped" :entity-1 0 :add]
+;;             ["moped" :entity-2 2 :add]]
+;;            (-> db
+;;                :indexes
+;;                :entities-by-english-vehicle-name
+;;                :collection)))
+
+;;     (is (= [[:entity-1 :price 1000 0 :add]
+;;             [:entity-1 :vehicle-in-finnish "mopo" 0 :add]
+;;             [:entity-2 :price 100 1 :add]
+;;             [:entity-2 :vehicle-in-finnish "fillari" 1 :add]
+;;             [:entity-2 :vehicle-in-finnish "fillari" 2 :remove]
+;;             [:entity-2 :vehicle-in-finnish "mopo" 2 :add]]
+;;            (-> db
+;;                :indexes
+;;                :eav
+;;                :collection)))))
+
+
 (def index-definitions [db-common/eav-index-definition
                         db-common/ave-index-definition
                         db-common/vae-index-definition
