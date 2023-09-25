@@ -8,5 +8,5 @@
                  [dali "0.1.0-SNAPSHOT"]
                  [com.clojure-goes-fast/clj-async-profiler "1.0.4"]]
   :repl-options {:init-ns stred.core}
-  :jvm-opts ["-Djdk.attach.allowAttachSelf"] ;; for clj-async-profiler
-  )
+  :jvm-opts ["-Djdk.attach.allowAttachSelf" ;; for clj-async-profiler
+             "-XX:-OmitStackTraceInFastThrow"])
