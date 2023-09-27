@@ -1,3 +1,7 @@
+; TODO: value-view should be evaluated in the hightlihgt binding block to swap text an bachground color when highlighted.
+; could the scene graph convey dynamic variables to child nodes?
+; dynamic variable bindings are part of view calls and they should be taken into account when invalidating cache for view calls
+; bindings should be inherited to all view calls on a scene graph branch
 (ns stred.core
   (:require
    [argumentica.branch-transaction-log :as branch-transaction-log]
@@ -38,6 +42,40 @@
    [flow-gl.tools.trace :as trace]
    [clojure.walk :as walk]
    [argumentica.db.common :as common]))
+
+(defn add-color [color delta]
+  (vec (concat (map (comp #(min 255 %)
+                          +) color delta)
+               (drop (count delta)
+                     color))))
+
+(deftest test-add-color
+  (is (= [1 0 0 0]
+         (add-color [0 0 0 0]
+                    [1])))
+
+  (is (= [1 2 3 4]
+         (add-color [0 0 0 0]
+                    [1 2 3 4])))
+
+  (is (= [255 0 0 0]
+         (add-color [100 0 0 0]
+                    [200]))))
+
+(def dark-mode (let [text-color [100 100 100 255]
+                     background-color [0 0 0 255]]
+                 {:background-color background-color
+                  :text-color text-color
+                  :highlighted-text-color background-color
+                  :symbol-background [0 110 0 255]
+                  :highlighted-background-color (add-color background-color
+                                                           [0 0 100])
+                  :focus-highlight-color (add-color background-color
+                                                    [0 140 0])
+                  :menu-background (add-color background-color
+                                              [50 50 50])}))
+
+(def ^:dynamic theme dark-mode)
 
 (defn create-dependable-stream-db-in-memory [id index-definitions]
   (assoc (stream/in-memory {:id id :create-atom (partial dependable-atom/atom (str "stream " id))})
@@ -749,16 +787,17 @@
 (def header-font (font/create-by-name "CourierNewPS-BoldMT" 60))
 
 (defn text [string & [{:keys [font color] :or {font font
-                                               color [0 0 0 255]}}]]
+                                               color (:text-color theme)}}]]
   (text-area/text (str string)
                   color
                   font))
 
-(defn box [content & [{:keys [fill-color] :or {fill-color [255 255 255 255]}}]]
+(defn box [content & [{:keys [fill-color draw-color] :or {fill-color (:background-color theme)
+                                                          draw-color (:background-color theme)}}]]
   (layouts/box 2
                (visuals/rectangle-2 :fill-color fill-color
-                                    :draw-color [200 200 200 255]
-                                    :line-width 4
+                                    :draw-color draw-color
+                                    :line-width 2
                                     :corner-arc-radius 10)
                content))
 
@@ -797,6 +836,16 @@
                                     :line-width 0
                                     :corner-arc-radius 30
                                     )
+               content))
+
+(defn highlight-2 [highlight? content]
+  (layouts/box 5
+               (visuals/rectangle-2 :fill-color (if highlight?
+                                                  (:highlighted-background-color theme)
+                                                  [0 0 0 0]#_(:background-color theme))
+                                    :draw-color nil
+                                    :line-width 0
+                                    :corner-arc-radius 30)
                content))
 
 (defn type-symbol [type]
@@ -849,8 +898,8 @@
       (-> (highlight child
                      {:fill-color (if (keyboard/sub-component-is-focused?)
                                     #_(:focused? @state-atom)
-                                    [240 240 255 255]
-                                    [255 255 255 0])})
+                                    (:focus-highlight-color theme)
+                                    (:background-color theme))})
           #_(assoc :keyboard-event-handler [focus-highlight-keyboard-event-handler state-atom])))))
 
 (defn on-click-mouse-event-handler [on-clicked node event]
@@ -926,12 +975,13 @@
        (let [type (db-common/value db
                                    value
                                    (prelude :type-attribute))]
-         (layouts/with-margins 5 0 0 0 (box (if type
-                                              (text (or (label db type)
-                                                        (value-string db type)))
-                                              {:width 30
-                                               :height 30})
-                                            {:fill-color [200 200 255 255]})))
+         (layouts/with-margins 5 0 0 0 (highlight (if type
+                                                    (text "foo "#_(or (label db type)
+                                                              (value-string db type))
+                                                          {:color (:background-color theme)})
+                                                    {:width 30
+                                                     :height 30})
+                                                  {:fill-color (:symbol-background theme)})))
        value-view))
 
 (defn value-view [db value]
@@ -958,7 +1008,7 @@
                           :on-text-change on-text-change}])
 
 (defn bare-text-editor-2 [text on-change & [{:keys [validate-new-text font] :or {font font}}]]
-  [text-area/text-area-3 {:style {:color [0 0 0 255]
+  [text-area/text-area-3 {:style {:color (:text-color theme)
                                   :font  font}
                           :text text
                           :on-change on-change
@@ -967,7 +1017,8 @@
 (defn text-editor [text on-text-change]
   (box (layouts/with-maximum-size column-width nil
          (layouts/with-minimum-size 300 nil
-           (bare-text-editor text on-text-change)))))
+           (bare-text-editor text on-text-change)))
+       {:draw-color (:text-color theme)}))
 
 (defn button-mouse-event-handler [on-pressed node event]
   (when (= :mouse-clicked (:type event))
@@ -1076,9 +1127,9 @@
                                                                 :else
                                                                 new-state)))
                                                           {:font font}))
-                                    {:fill-color (if (not (= given-text (:text state)))
-                                                   [240 240 255 255]
-                                                   [255 255 255 255])})
+                                    {:fill-color (if (= given-text (:text state))
+                                                   (:background-color theme)
+                                                   (:highlighted-background-color theme))})
                                (assoc :keyboard-event-handler [editor-keyboard-event-handler
                                                                (fn on-enter []
                                                                  (if (nil? (:text state))
@@ -1124,8 +1175,8 @@
 (defn outline [db entity]
   (layouts/vertically-2 {:margin 10}
                         (layouts/box 10
-                                     (visuals/rectangle-2 :fill-color [255 255 255 255]
-                                                          :draw-color [200 200 200 255]
+                                     (visuals/rectangle-2 :fill-color (:background-color theme)
+                                                          :draw-color [0 0 0 0]
                                                           :line-width 4
                                                           :corner-arc-radius 30)
                                      (layouts/center-horizontally (text (str (label db entity)))))
@@ -1277,10 +1328,8 @@
                    (layouts/hover {:z 4}
                                   (box (layouts/vertically-2 {}
                                                              (map-indexed (fn [index statement]
-                                                                            (-> (highlight (value-view db statement)
-                                                                                           {:fill-color (if (= index (:selected-index state))
-                                                                                                          [240 240 255 255]
-                                                                                                          [255 255 255 255])})
+                                                                            (-> (highlight-2 (= index (:selected-index state))
+                                                                                             (value-view db statement))
                                                                                 (assoc :mouse-event-handler [on-click-mouse-event-handler (fn []
                                                                                                                                             (on-entity-change statement))])))
                                                                           (:results state)))))))
@@ -1350,6 +1399,11 @@
   (is (= ""
          (key-patterns-to-string nil))))
 
+(defn run-command-mouse-event-handler [command node event]
+  (when (= :mouse-clicked (:type event))
+    ((:run! command) node))
+  event)
+
 (defn prompt-2 [run-query _commands]
   (let [state-atom (dependable-atom/atom "prompt-state"
                                          {:text ""
@@ -1376,19 +1430,15 @@
                    (layouts/hover {:z 4}
                                   (box (layouts/vertically-2 {}
                                                              (map-indexed (fn [index command]
-                                                                            (-> (highlight (chor 40
-                                                                                                 (when (not (empty? (:key-patterns command)))
-                                                                                                   (text (key-patterns-to-string (:key-patterns command))))
-                                                                                                 (or (:view command)
-                                                                                                     (text (:name command))))
-                                                                                           {:fill-color (if (= index (:selected-index state))
-                                                                                                          [240 240 255 255]
-                                                                                                          [255 255 255 255])})
-                                                                                (assoc :mouse-event-handler (fn [node event]
-                                                                                                              (when (= :mouse-clicked (:type event))
-                                                                                                                ((:run! command) node))
-                                                                                                              event))))
-                                                                          the-commands))))))
+                                                                            (-> (highlight-2 (= index (:selected-index state))
+                                                                                             (chor 40
+                                                                                                   (when (not (empty? (:key-patterns command)))
+                                                                                                     (text (key-patterns-to-string (:key-patterns command))))
+                                                                                                   (or (:view command)
+                                                                                                       (text (:name command)))))
+                                                                                (assoc :mouse-event-handler [run-command-mouse-event-handler command])))
+                                                                          the-commands))
+                                       {:fill-color (:menu-background theme)}))))
             (assoc :command-set (prompt-2-command-set state-atom
                                                       the-commands)))))))
 
@@ -1646,17 +1696,15 @@
                                                       [[:set entity attribute [item-id]]])))))))]
           (-> (ver 0
                    (map-indexed (fn [index value-entity]
-                                  (let [item-view (-> (highlight (with-meta [item-view db value-entity]
-                                                                   {:mouse-event-handler [focus-on-click-mouse-event-handler]
-                                                                    :can-gain-focus? true
-                                                                    :array-value true
-                                                                    :local-id [:value index]
-                                                                    :keyboard-event-handler [array-editor-item-view-keyboard-event-handler
-                                                                                             state-atom
-                                                                                             index]})
-                                                                 {:fill-color (if (= index (:selected-index state))
-                                                                                [240 240 255 255]
-                                                                                [255 255 255 0])}))
+                                  (let [item-view (-> (highlight-2 (= index (:selected-index state))
+                                                                   (with-meta [item-view db value-entity]
+                                                                     {:mouse-event-handler [focus-on-click-mouse-event-handler]
+                                                                      :can-gain-focus? true
+                                                                      :array-value true
+                                                                      :local-id [:value index]
+                                                                      :keyboard-event-handler [array-editor-item-view-keyboard-event-handler
+                                                                                               state-atom
+                                                                                               index]})))
                                         insertion-prompt ^{:local-id :insertion-prompt} [prompt-2
                                                                                          run-query
                                                                                          (fn [results]
@@ -1788,10 +1836,8 @@
            (fn on-new-entity [new-entity]
              (transact! db [[:set entity attribute [new-entity]]]))]
           (-> (ver 0 (map-indexed (fn [index value-entity]
-                                    (let [value-view (-> (highlight (value-view db value-entity)
-                                                                    {:fill-color (if (= index (:selected-index state))
-                                                                                   [240 240 255 255]
-                                                                                   [255 255 155 0])})
+                                    (let [value-view (-> (highlight-2 (= index (:selected-index state))
+                                                                      (value-view db value-entity))
                                                          (assoc :mouse-event-handler [focus-on-click-mouse-event-handler]
                                                                 :can-gain-focus? true
                                                                 :array-value true
@@ -2048,17 +2094,15 @@
                               (int (Math/ceil (/ (count value-entities)
                                                  page-size))))))
                  (map-indexed (fn [index value-entity]
-                                (highlight (with-meta [outline-view db value-entity value-lens]
-                                             {:mouse-event-handler [focus-on-click-mouse-event-handler]
-                                              :can-gain-focus? true
-                                              :local-id [:value index]
-                                              :entity value-entity
-                                              :keyboard-event-handler [entity-array-attribute-editor-value-view-keyboard-event-handler
-                                                                       state-atom
-                                                                       index]})
-                                           {:fill-color (if (= index (:selected-index state))
-                                                          [240 240 255 255]
-                                                          [255 255 255 0])}))
+                                (highlight-2 (= index (:selected-index state))
+                                             (with-meta [outline-view db value-entity value-lens]
+                                               {:mouse-event-handler [focus-on-click-mouse-event-handler]
+                                                :can-gain-focus? true
+                                                :local-id [:value index]
+                                                :entity value-entity
+                                                :keyboard-event-handler [entity-array-attribute-editor-value-view-keyboard-event-handler
+                                                                         state-atom
+                                                                         index]})))
                               (take page-size
                                     (drop (* page-size
                                              (:page state))
@@ -2511,51 +2555,52 @@
   ) ;; TODO: remove-me
 
 
-(defn command-handler-keyboard-event-handler [show-help? state-atom focused-subtrees-with-command-sets _scene-graph event]
-  (if (empty? focused-subtrees-with-command-sets)
-    event
-    (if (and (= :ascent (:phase event))
-             (= :key-pressed (:type event)))
-      (let [triggered-key-patterns (conj (:triggered-key-patterns @state-atom)
-                                         (keyboard/event-to-key-pattern event))
-            possible-commands-and-subtrees (->> focused-subtrees-with-command-sets
-                                                (mapcat (fn [subtree]
-                                                          (for [command (:commands (:command-set subtree))]
-                                                            {:subtree subtree
-                                                             :command command})))
-                                                (filter (fn [command-and-subtree]
-                                                          (and (:available? (:command command-and-subtree))
-                                                               (keyboard/key-patterns-prefix-match? triggered-key-patterns
-                                                                                                    (:key-patterns (:command command-and-subtree)))))))]
-        (if (empty? possible-commands-and-subtrees)
-          (do (swap! state-atom assoc :triggered-key-patterns [])
-              event)
-          (if-let [matched-command-and-subtree (medley/find-first (fn [command-and-subtree]
-                                                                    (keyboard/key-patterns-match? triggered-key-patterns
-                                                                                                  (:key-patterns (:command command-and-subtree))))
-                                                                  possible-commands-and-subtrees)]
-            (do ((:run! (:command matched-command-and-subtree))
-                 (:subtree matched-command-and-subtree))
-                (swap! state-atom assoc :text "")
-                nil)
-            (do (swap! state-atom assoc :triggered-key-patterns triggered-key-patterns)
-                event))))
-      (if (and show-help?
-               (= :descent (:phase event))
-               (= :key-pressed (:type event))
-               (not (:alt? event))
-               (not (:shift? event))
-               (not (:control? event))
-               (not (:meta? event))
-               (:character event)
-               (not (= :enter (:key event)))
-               (not (= :escape (:key event))))
-        (if (= :back-space (:key event))
-          (swap! state-atom update :text (fn [old-text]
-                                           (subs old-text 0 (max 0
-                                                                 (dec (count old-text))))))
-          (swap! state-atom update :text str (:character event)))
-        event))))
+(defn command-handler-keyboard-event-handler [show-help? state-atom _scene-graph event]
+  (let [focused-subtrees-with-command-sets @focused-subtrees-with-command-sets]
+    (if (empty? focused-subtrees-with-command-sets)
+      event
+      (if (and (= :ascent (:phase event))
+               (= :key-pressed (:type event)))
+        (let [triggered-key-patterns (conj (:triggered-key-patterns @state-atom)
+                                           (keyboard/event-to-key-pattern event))
+              possible-commands-and-subtrees (->> focused-subtrees-with-command-sets
+                                                  (mapcat (fn [subtree]
+                                                            (for [command (:commands (:command-set subtree))]
+                                                              {:subtree subtree
+                                                               :command command})))
+                                                  (filter (fn [command-and-subtree]
+                                                            (and (:available? (:command command-and-subtree))
+                                                                 (keyboard/key-patterns-prefix-match? triggered-key-patterns
+                                                                                                      (:key-patterns (:command command-and-subtree)))))))]
+          (if (empty? possible-commands-and-subtrees)
+            (do (swap! state-atom assoc :triggered-key-patterns [])
+                event)
+            (if-let [matched-command-and-subtree (medley/find-first (fn [command-and-subtree]
+                                                                      (keyboard/key-patterns-match? triggered-key-patterns
+                                                                                                    (:key-patterns (:command command-and-subtree))))
+                                                                    possible-commands-and-subtrees)]
+              (do ((:run! (:command matched-command-and-subtree))
+                   (:subtree matched-command-and-subtree))
+                  (swap! state-atom assoc :text "")
+                  nil)
+              (do (swap! state-atom assoc :triggered-key-patterns triggered-key-patterns)
+                  event))))
+        (if (and show-help?
+                 (= :descent (:phase event))
+                 (= :key-pressed (:type event))
+                 (not (:alt? event))
+                 (not (:shift? event))
+                 (not (:control? event))
+                 (not (:meta? event))
+                 (:character event)
+                 (not (= :enter (:key event)))
+                 (not (= :escape (:key event))))
+          (if (= :back-space (:key event))
+            (swap! state-atom update :text (fn [old-text]
+                                             (subs old-text 0 (max 0
+                                                                   (dec (count old-text))))))
+            (swap! state-atom update :text str (:character event)))
+          event)))))
 
 (defn command-handler [_show-help? _child]
   (let [state-atom (dependable-atom/atom "command-handler-state"
@@ -2567,7 +2612,7 @@
         (-> (layouts/vertical-split child
                                     (when show-help?
                                       (ver 10
-                                           (assoc (visuals/rectangle-2 :fill-color [0 0 0 255])
+                                           (assoc (visuals/rectangle-2 :fill-color (:text-color theme))
                                                   :height 10)
                                            {:view-call [command-help
                                                         (:triggered-key-patterns @state-atom)
@@ -2577,8 +2622,7 @@
                                             :local-id :command-help})))
             (assoc :keyboard-event-handler [command-handler-keyboard-event-handler
                                             show-help?
-                                            state-atom
-                                            focused-subtrees-with-command-sets]))))))
+                                            state-atom]))))))
 
 (defn- can-undo?  [state]
   (not (empty? (seq (:branch-transaction-log (:branch state))))))
@@ -2812,7 +2856,9 @@
                                                                                                                               (stred :views))
                                                                                                                 :tmp/new-view))]])))}]}
               (ver 0
-                   (layouts/with-margins 0 0 30 0 [text-attribute-editor db notebook (prelude :label) {:font header-font}])
+                   (assoc-last :local-id :notebook-label
+                               (layouts/with-margins 0 0 30 0 [text-attribute-editor db notebook (prelude :label) {:font header-font}]))
+                   ^{:local-id :notebook-body}
                    [array-editor
                     db
                     notebook
@@ -3053,13 +3099,14 @@
                                    (common/value db notebook (stred :views)))))
                 :available? true
                 ;;                   :key-patterns  [[#{:control} :enter]]
-                :run! (fn [_subtree]
+                :run! (fn [_subtree] 
                         (open-entity! state-atom notebook))})))])
 
 (defn scroll-pane [local-id x y child]
-  #_{:children [{:children [child]
-                 :x x
-                 :y y}]}
+  #_{:children [child]
+     :x x
+     :y y
+     :local-id local-id}
   (visuals/clip {:children [child]
                  :x x
                  :y y
@@ -3071,18 +3118,21 @@
   (let [state @state-atom
         db (:stream-db state)
         root-view-node-id view-compiler/id]
-    (layouts/superimpose (visuals/rectangle-2 :fill-color [255 255 255 255])
+    (layouts/superimpose (assoc-last :local-id :background
+                                     (visuals/rectangle-2 :fill-color (:background-color theme)))
                          [command-handler
                           (:show-help? state)
-                          (scroll-pane :srcolling-pane
+                          (scroll-pane :scrolling-pane
                                        (:x state)
                                        (:y state)
                                        (-> (ver 10
 
-                                                (layouts/center-horizontally
 
-                                                 ^{:local-id :prompt}
-                                                 [top-prompt (:branch state) state-atom])
+                                                (assoc-last :local-id :center-prompt-horizontally
+                                                            (layouts/center-horizontally
+
+                                                             ^{:local-id :prompt}
+                                                             [top-prompt (:branch state) state-atom]))
 
                                                 (when (:entity state)
                                                   (let [entity-type (db-common/value (:branch state)
@@ -3413,10 +3463,10 @@
                                                                             :run! (fn [_subtre]
                                                                                     (let [focused-path (scene-graph/path-to scene-graph/current-scene-graph
                                                                                                                             @focused-node-id)
-                                                                                          scrolling-pane (medley/find-first #(= :srcolling-pane
+                                                                                          scrolling-pane (medley/find-first #(= :scrolling-pane
                                                                                                                                 (:local-id %))
                                                                                                                             focused-path)
-                                                                                          current-absolute-y (reduce + (map :y (remove #(= :srcolling-pane
+                                                                                          current-absolute-y (reduce + (map :y (remove #(= :scrolling-pane
                                                                                                                                            (:local-id %))
                                                                                                                                        focused-path)))
                                                                                           middle-y (/ (:available-height scrolling-pane)
@@ -3637,6 +3687,22 @@
                         ;; [random-text-editor]
                         ))
 
+(defn image-cache-test-root []
+  (layouts/vertically-2 {}
+                        {:view-call [random-text-editor]
+                         :local-id :editor-1}
+
+                        (assoc-last :local-id :clip
+                                    (visuals/clip (assoc-last :local-id :vertically
+                                                              (layouts/vertically-2 {}
+                                                                                    {:view-call [random-text-editor]
+                                                                                     :local-id :editor-2}
+                                                                                    (assoc-last :local-id :vertically-2
+                                                                                                (layouts/vertically-2 {}
+                                                                                                                      {:view-call [random-text-editor]
+                                                                                                                       :local-id :editor-3}
+                                                                                                                      {:view-call [random-text-editor]
+                                                                                                                       :local-id :editor-4}))))))))
 
 (defn adapt-to-space-test-root []
   {:adapt-to-space (fn [_node]
@@ -3941,7 +4007,18 @@
                                              (for [i (range 10)]
                                                (box (text (str "lower" i))))))))
 
-
+(defn dynamic-scope-demo []
+  (ver 0
+       (text "regular text")
+       (highlight-2 true (fn [] (text "highlighted text")))
+       (binding [theme (update theme :text-color add-color [30 30])]
+         (highlight-2 true (fn [] (ver 0
+                                       (text "text inside highlighted branch text")
+                                       (highlight-2 true
+                                                    (fn [] (ver 0
+                                                                (text "text inside double highlighted branch text")
+                                                                (highlight-2 true
+                                                                             (fn [] (text "trible highlighted text"))))))))))))
 
 (defn start []
   (println "\n\n------------ start -------------\n\n")
@@ -3951,7 +4028,9 @@
            #'notebook-ui
            ;; #'split-demo
            ;; #'performance-test-root
+           ;; #'image-cache-test-root
            ;; adapt-to-space-test-root
+           ;; #'dynamic-scope-demo
            :on-exit #(reset! event-channel-atom nil)))
 
   ;; (Thread/sleep 100)
