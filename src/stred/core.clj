@@ -67,7 +67,7 @@
                  {:background-color background-color
                   :text-color text-color
                   :highlighted-text-color background-color
-                  :symbol-background [0 110 0 255]
+                  :symbol-background [0 70 0 255]
                   :highlighted-background-color (add-color background-color
                                                            [0 0 100])
                   :focus-highlight-color (add-color background-color
@@ -1002,7 +1002,7 @@
                                                               scene-graph))))
 
 (defn bare-text-editor [text on-text-change]
-  [text-area/text-area-3 {:style {:color [0 0 0 255]
+  [text-area/text-area-3 {:style {:color (:text-color theme)
                                   :font  font}
                           :text text
                           :on-text-change on-text-change}])
@@ -1333,9 +1333,7 @@
                                                                                 (assoc :mouse-event-handler [on-click-mouse-event-handler (fn []
                                                                                                                                             (on-entity-change statement))])))
                                                                           (:results state)))))))
-            (assoc :command-set (prompt-command-set state-atom db on-entity-change)
-                                        ;                   :keyboard-event-handler [prompt-keyboard-event-handler state-atom]
-                   ))))))
+            (assoc :command-set (prompt-command-set state-atom db on-entity-change)))))))
 
 (defn prompt-2-command-set [state-atom commands]
   (let [state @state-atom]
@@ -1343,30 +1341,52 @@
      :commands (concat (filter :key-patterns
                                commands)
                        [{:name "commit selection"
-                         :available? (not (empty? commands))
+                         :available? (and (:show-dropdown? state)
+                                          (not (empty? commands)))
                          :key-patterns [[#{} :enter]]
                          :run! (fn [subtree]
                                  (swap! state-atom
-                                        assoc :text ""
-                                        :results [])
+                                        assoc
+                                        :text ""
+                                        :results []
+                                        :show-dropdown? false)
                                  ((:run! (nth (vec commands)
                                               (:selected-index state)))
                                   subtree))}
 
+                        {:name "show dropdown"
+                         :available? (not (:show-dropdown? state))
+                         :key-patterns [[#{} :enter]]
+                         :run! (fn [_subtree]
+                                 (swap! state-atom
+                                        assoc :show-dropdown? true))}
+
+                        {:name "hide dropdown"
+                         :available? (:show-dropdown? state)
+                         :key-patterns [[#{} :escape]]
+                         :run! (fn [_subtree]
+                                 (swap! state-atom
+                                        assoc
+                                        :show-dropdown? false
+                                        :text ""
+                                        :results []))}
+
                         {:name "select next"
-                         :available? (and (not (empty? commands))
+                         :available? (and (:show-dropdown? state)
+                                          (not (empty? commands))
                                           (< (:selected-index state)
                                              (dec (count commands))))
-                         :key-patterns [[#{:meta} :n]] ;; can not use control here because text editor uses it
+                         :key-patterns [[#{:control} :n]] ;; can not use control here because text editor uses it
                          :run! (fn [_subtree]
                                  (swap! state-atom
                                         update :selected-index inc))}
 
                         {:name "select previous"
-                         :available? (and (not (empty? commands))
+                         :available? (and (:show-dropdown? state)
+                                          (not (empty? commands))
                                           (< 0
                                              (:selected-index state)))
-                         :key-patterns [[#{:meta} :p]] ;; can not use control here because text editor uses it
+                         :key-patterns [[#{:control} :p]] ;; can not use control here because text editor uses it
                          :run! (fn [_subtree]
                                  (swap! state-atom
                                         update :selected-index dec))}])}))
@@ -1408,7 +1428,8 @@
   (let [state-atom (dependable-atom/atom "prompt-state"
                                          {:text ""
                                           :selected-index 0
-                                          :results (run-query "")})]
+                                          :results (run-query "")
+                                          :show-dropdown? true})]
     (fn [run-query commands]
       (let [state @state-atom
             the-commands (commands (:results state))]
@@ -1418,6 +1439,7 @@
                                                      (swap! state-atom
                                                             (fn [state]
                                                               (assoc state
+                                                                     :show-dropdown? true
                                                                      :results (if (= "" new-text)
                                                                                 []
                                                                                 (run-query new-text))
@@ -1426,6 +1448,7 @@
                                       (assoc :local-id :prompt-editor))]
                  (when (and (keyboard/sub-component-is-focused?)
                             (not (empty? the-commands))
+                            (:show-dropdown? state)
                             #_(not (empty? (:results state))))
                    (layouts/hover {:z 4}
                                   (box (layouts/vertically-2 {}
@@ -2295,13 +2318,13 @@
 
                             (fn available-items [results]
                               (let [existing-attributes-set (->> (common/entity-attributes db entity)
-                                                                 (remove (fn [attribute]
-                                                                           (= "stred" (:stream-id attribute))))
+                                                                 #_(remove (fn [attribute]
+                                                                             (= "stred" (:stream-id attribute))))
                                                                  (set))
                                     existing-reverse-attributes-set (->> (concat (common/reverse-entity-attributes db entity)
                                                                                  (common/entity-sequence-reference-attributes db entity))
-                                                                         (remove (fn [attribute]
-                                                                                   (= "stred" (:stream-id attribute))))
+                                                                         #_(remove (fn [attribute]
+                                                                                     (= "stred" (:stream-id attribute))))
                                                                          (set))
                                     all-existing-attributes (set/union existing-attributes-set
                                                                        existing-reverse-attributes-set)
@@ -2509,8 +2532,9 @@
                            " "
                            (:name command))
                       {:color (if (:available? command)
-                                [0 0 0 255]
-                                [200 200 200 255])}))))))
+                                (:text-color theme)
+                                (add-color (:text-color theme)
+                                           [0 0 0 -100]))}))))))
 
 
 #_(defn focused-subtrees-with-command-sets []
