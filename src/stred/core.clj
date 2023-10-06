@@ -1,7 +1,7 @@
-; TODO: value-view should be evaluated in the hightlihgt binding block to swap text an bachground color when highlighted.
-; could the scene graph convey dynamic variables to child nodes?
-; dynamic variable bindings are part of view calls and they should be taken into account when invalidating cache for view calls
-; bindings should be inherited to all view calls on a scene graph branch
+                                        ; TODO: value-view should be evaluated in the hightlihgt binding block to swap text an bachground color when highlighted.
+                                        ; could the scene graph convey dynamic variables to child nodes?
+                                        ; dynamic variable bindings are part of view calls and they should be taken into account when invalidating cache for view calls
+                                        ; bindings should be inherited to all view calls on a scene graph branch
 (ns stred.core
   (:require
    [argumentica.branch-transaction-log :as branch-transaction-log]
@@ -42,6 +42,11 @@
    [flow-gl.tools.trace :as trace]
    [clojure.walk :as walk]
    [argumentica.db.common :as common]))
+
+
+(def escape-key-pattern-sequences [[[#{:control} :g]]
+                                   [[#{} :escape]]])
+
 
 (defn add-color [color delta]
   (vec (concat (map (comp #(min 255 %)
@@ -977,7 +982,7 @@
                                    (prelude :type-attribute))]
          (layouts/with-margins 5 0 0 0 (highlight (if type
                                                     (text "foo "#_(or (label db type)
-                                                              (value-string db type))
+                                                                      (value-string db type))
                                                           {:color (:background-color theme)})
                                                     {:width 30
                                                      :height 30})
@@ -1036,22 +1041,6 @@
        (catch Exception e
          nil)))
 
-(defn editor-keyboard-event-handler [on-enter on-escape node event]
-  (cond (and (= :descent (:phase event))
-             (= :key-pressed (:type event))
-             (= :enter (:key event)))
-        (do (on-enter)
-            nil)
-
-        (and (= :descent (:phase event))
-             (= :key-pressed (:type event))
-             (= :escape (:key event)))
-        (do (on-escape)
-            nil)
-
-        :else
-        event))
-
 (defn number-editor [given-number _on-change!]
   (let [state-atom (dependable-atom/atom {:number given-number
                                           :given-number given-number})]
@@ -1088,14 +1077,20 @@
                                                  new-state)))))
                  {:fill-color (when (not (= given-number (:number state)))
                                 [240 240 255 255])})
-            (assoc :keyboard-event-handler [editor-keyboard-event-handler
-                                            (fn []
-                                              (if (nil? (:number state))
-                                                (swap! state-atom assoc :number given-number)
-                                                (on-change! (:number state))))
+            (assoc :command-set {:name "number editor"
+                                 :commands [{:name "revert"
+                                             :available? (not (= (:number state)
+                                                                 given-number))
+                                             :key-patterns escape-key-pattern-sequences
+                                             :run! (fn [_subtree] (swap! state-atom assoc :number given-number))}
 
-                                            (fn []
-                                              (swap! state-atom assoc :number given-number))]))))))
+                                            {:name "commit"
+                                             :available? true
+                                             :key-patterns [[#{} :enter]]
+                                             :run! (fn [_subtree]
+                                                     (if (nil? (:number state))
+                                                       (swap! state-atom assoc :number given-number)
+                                                       (on-change! (:number state))))}]}))))))
 
 (defn text-editor-2 [given-text _on-change! & [{:keys [font] :or {font font}}]]
   (let [state-atom (dependable-atom/atom {:text given-text
@@ -1130,14 +1125,20 @@
                                     {:fill-color (if (= given-text (:text state))
                                                    (:background-color theme)
                                                    (:highlighted-background-color theme))})
-                               (assoc :keyboard-event-handler [editor-keyboard-event-handler
-                                                               (fn on-enter []
-                                                                 (if (nil? (:text state))
-                                                                   (swap! state-atom assoc :text given-text)
-                                                                   (on-change! (:text state))))
+                               (assoc :command-set {:name "text editor"
+                                                    :commands [{:name "revert"
+                                                                :available? (not (= (:text state)
+                                                                                    given-text))
+                                                                :key-patterns escape-key-pattern-sequences
+                                                                :run! (fn [_subtree] (swap! state-atom assoc :text given-text))}
 
-                                                               (fn on-escape []
-                                                                 (swap! state-atom assoc :text given-text))]))]
+                                                               {:name "commit"
+                                                                :available? true
+                                                                :key-patterns [[#{} :enter]]
+                                                                :run! (fn [_subtree]
+                                                                        (if (nil? (:text state))
+                                                                          (swap! state-atom assoc :text given-text)
+                                                                          (on-change! (:text state))))}]}))]
           (assoc (text given-text
                        {:font font})
                  :can-gain-focus? true))))))
@@ -1363,7 +1364,7 @@
 
                         {:name "hide dropdown"
                          :available? (:show-dropdown? state)
-                         :key-patterns [[#{} :escape]]
+                         :key-patterns escape-key-pattern-sequences
                          :run! (fn [_subtree]
                                  (swap! state-atom
                                         assoc
@@ -1583,7 +1584,7 @@
                                              (:selected-index state))))
                        [{:name "cancel insertion"
                          :available? (:insertion-index state)
-                         :key-patterns [[#{} :escape]]
+                         :key-patterns escape-key-pattern-sequences
                          :run! (fn [_subtree]
                                  (swap! state-atom dissoc :insertion-index))}
 
@@ -1780,7 +1781,7 @@
     {:name "entity array editor"
      :commands [{:name "cancel insertion"
                  :available? (:insertion-index state)
-                 :key-patterns [[#{} :escape]]
+                 :key-patterns escape-key-pattern-sequences
                  :run! (fn [_subtree]
                          (swap! state-atom dissoc :insertion-index))}
 
@@ -1991,7 +1992,7 @@
      :commands [{:name "cancel adding"
                  :available? (and (not (empty? values))
                                   (:adding? state))
-                 :key-patterns [[#{} :escape]]
+                 :key-patterns escape-key-pattern-sequences
                  :run! (fn [_subtree]
                          (swap! state-atom assoc :adding? false))}
 
@@ -2578,6 +2579,22 @@
 
   ) ;; TODO: remove-me
 
+(defn key-pattern-sequences [key-patterns]
+  (if (every? (comp set? first)
+              key-patterns)
+    [key-patterns]
+    key-patterns))
+
+(deftest test-key-pattern-sequences
+  (let [single-key-pattern-sequence [[#{:control} :e]
+                                     [#{:control} :a]]]
+    (is (= [single-key-pattern-sequence]
+           (key-pattern-sequences single-key-pattern-sequence)))
+
+    (is (= [single-key-pattern-sequence
+            single-key-pattern-sequence]
+           (key-pattern-sequences [single-key-pattern-sequence
+                                   single-key-pattern-sequence])))))
 
 (defn command-handler-keyboard-event-handler [show-help? state-atom _scene-graph event]
   (let [focused-subtrees-with-command-sets @focused-subtrees-with-command-sets]
@@ -2594,8 +2611,8 @@
                                                                :command command})))
                                                   (filter (fn [command-and-subtree]
                                                             (and (:available? (:command command-and-subtree))
-                                                                 (keyboard/key-patterns-prefix-match? triggered-key-patterns
-                                                                                                      (:key-patterns (:command command-and-subtree)))))))]
+                                                                 (some (partial keyboard/key-patterns-prefix-match? triggered-key-patterns)
+                                                                       (key-pattern-sequences (:key-patterns (:command command-and-subtree))))))))]
           (if (empty? possible-commands-and-subtrees)
             (do (swap! state-atom assoc :triggered-key-patterns [])
                 event)
@@ -3123,7 +3140,7 @@
                                    (common/value db notebook (stred :views)))))
                 :available? true
                 ;;                   :key-patterns  [[#{:control} :enter]]
-                :run! (fn [_subtree] 
+                :run! (fn [_subtree]
                         (open-entity! state-atom notebook))})))])
 
 (defn scroll-pane [local-id x y child]
@@ -3477,7 +3494,7 @@
 
                                                                            {:name "toggle uncommitted changes"
                                                                             :available? true
-                                                                            :key-patterns [[#{:control} :g]]
+                                                                            :key-patterns [[#{:control} :u]]
                                                                             :run! (fn [_subtree]
                                                                                     (swap! state-atom update :show-uncommitted-changes? not))}
 
