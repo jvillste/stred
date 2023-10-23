@@ -981,7 +981,7 @@
                                    value
                                    (prelude :type-attribute))]
          (layouts/with-margins 5 0 0 0 (highlight (if type
-                                                    (text "foo "#_(or (label db type)
+                                                    (text (or (label db type)
                                                                       (value-string db type))
                                                           {:color (:background-color theme)})
                                                     {:width 30
@@ -1219,61 +1219,61 @@
                                        type
                                        label)))))
 
-(defn prompt-command-set [state-atom db on-entity-change]
-  (let [state @state-atom]
-    {:name "prompt"
-     :commands [{:name "create question"
-                 :available? (not (empty? (:text state)))
-                 :key-patterns [[#{:control} :c] [#{:control} :n]]
-                 :run! (create-run-create-entity state-atom db on-entity-change (argumentation :question))}
+;; (defn prompt-command-set [state-atom db on-entity-change]
+;;   (let [state @state-atom]
+;;     {:name "prompt"
+;;      :commands [{:name "create question"
+;;                  :available? (not (empty? (:text state)))
+;;                  :key-patterns [[#{:control} :c] [#{:control} :n]]
+;;                  :run! (create-run-create-entity state-atom db on-entity-change (argumentation :question))}
 
-                {:name "create question"
-                 :available? (not (empty? (:text state)))
-                 :key-patterns [[#{:control} :c] [#{:control} :q]]
-                 :run! (create-run-create-entity state-atom db on-entity-change (argumentation :question))}
+;;                 {:name "create question"
+;;                  :available? (not (empty? (:text state)))
+;;                  :key-patterns [[#{:control} :c] [#{:control} :q]]
+;;                  :run! (create-run-create-entity state-atom db on-entity-change (argumentation :question))}
 
-                {:name "create statement"
-                 :available? (not (empty? (:text state)))
-                 :key-patterns [[#{:control} :c] [#{:control} :s]]
-                 :run! (create-run-create-entity state-atom db on-entity-change (argumentation :statement))}
+;;                 {:name "create statement"
+;;                  :available? (not (empty? (:text state)))
+;;                  :key-patterns [[#{:control} :c] [#{:control} :s]]
+;;                  :run! (create-run-create-entity state-atom db on-entity-change (argumentation :statement))}
 
-                {:name "create concept"
-                 :available? (not (empty? (:text state)))
-                 :key-patterns [[#{:control} :c] [#{:control} :c]]
-                 :run! (create-run-create-entity state-atom db on-entity-change (argumentation :concept))}
+;;                 {:name "create concept"
+;;                  :available? (not (empty? (:text state)))
+;;                  :key-patterns [[#{:control} :c] [#{:control} :c]]
+;;                  :run! (create-run-create-entity state-atom db on-entity-change (argumentation :concept))}
 
-                ;; {:name "create notebook"
-                ;;  :available? (not (empty? (:text state)))
-                ;;  :key-patterns [[#{:control} :c] [#{:control} :n]]
-                ;;  :run! (create-run-create-entity state-atom db on-entity-change (stred :notebook))}
+;;                 ;; {:name "create notebook"
+;;                 ;;  :available? (not (empty? (:text state)))
+;;                 ;;  :key-patterns [[#{:control} :c] [#{:control} :n]]
+;;                 ;;  :run! (create-run-create-entity state-atom db on-entity-change (stred :notebook))}
 
-                {:name "commit selection"
-                 :available? (not (empty? (:results state)))
-                 :key-patterns [[#{} :enter]]
-                 :run! (fn [_subtree]
-                         (swap! state-atom
-                                assoc :text ""
-                                :results [])
-                         (on-entity-change (nth (vec (:results state))
-                                                (:selected-index state))))}
+;;                 {:name "commit selection"
+;;                  :available? (not (empty? (:results state)))
+;;                  :key-patterns [[#{} :enter]]
+;;                  :run! (fn [_subtree]
+;;                          (swap! state-atom
+;;                                 assoc :text ""
+;;                                 :results [])
+;;                          (on-entity-change (nth (vec (:results state))
+;;                                                 (:selected-index state))))}
 
-                {:name "select next"
-                 :available? (and (not (empty? (:results state)))
-                                  (< (:selected-index state)
-                                     (dec (count (:results state)))))
-                 :key-patterns [[#{:meta} :n]]
-                 :run! (fn [_subtree]
-                         (swap! state-atom
-                                update :selected-index inc))}
+;;                 {:name "select next"
+;;                  :available? (and (not (empty? (:results state)))
+;;                                   (< (:selected-index state)
+;;                                      (dec (count (:results state)))))
+;;                  :key-patterns [[#{:meta} :n]]
+;;                  :run! (fn [_subtree]
+;;                          (swap! state-atom
+;;                                 update :selected-index inc))}
 
-                {:name "select previous"
-                 :available? (and (not (empty? (:results state)))
-                                  (< 0
-                                     (:selected-index state)))
-                 :key-patterns [[#{:meta} :p]]
-                 :run! (fn [_subtree]
-                         (swap! state-atom
-                                update :selected-index dec))}]}))
+;;                 {:name "select previous"
+;;                  :available? (and (not (empty? (:results state)))
+;;                                   (< 0
+;;                                      (:selected-index state)))
+;;                  :key-patterns [[#{:meta} :p]]
+;;                  :run! (fn [_subtree]
+;;                          (swap! state-atom
+;;                                 update :selected-index dec))}]}))
 
 ;; (defn prompt-keyboard-event-handler [create-statement node event]
 ;; ;;  (prn 'event event) ;; TODO: remove-me
@@ -1301,40 +1301,40 @@
 
 ;;   event)
 
-(defn prompt [_db _types _on-entity-change]
-  (let [state-atom (dependable-atom/atom "prompt-state"
-                                         {:text ""
-                                          :selected-index 0})]
-    (fn [db types on-entity-change]
-      (let [state @state-atom]
-        (-> (ver 0
-                 [focus-highlight (-> (text-editor (:text state)
-                                                   (fn [new-text]
-                                                     (let [entities (if (= "" new-text)
-                                                                      []
-                                                                      (if types
-                                                                        (distinct (mapcat (fn [type]
-                                                                                            (search-entities db type new-text))
-                                                                                          types))
-                                                                        (distinct (search-entities db new-text))))]
-                                                       (swap! state-atom
-                                                              (fn [state]
-                                                                (assoc state
-                                                                       :results entities
-                                                                       :selected-index 0
-                                                                       :text new-text))))))
-                                      (assoc :local-id :prompt-editor))]
-                 (when (and (keyboard/sub-component-is-focused?)
-                            (not (empty? (:results state))))
-                   (layouts/hover {:z 4}
-                                  (box (layouts/vertically-2 {}
-                                                             (map-indexed (fn [index statement]
-                                                                            (-> (highlight-2 (= index (:selected-index state))
-                                                                                             (value-view db statement))
-                                                                                (assoc :mouse-event-handler [on-click-mouse-event-handler (fn []
-                                                                                                                                            (on-entity-change statement))])))
-                                                                          (:results state)))))))
-            (assoc :command-set (prompt-command-set state-atom db on-entity-change)))))))
+;; (defn prompt [_db _types _on-entity-change]
+;;   (let [state-atom (dependable-atom/atom "prompt-state"
+;;                                          {:text ""
+;;                                           :selected-index 0})]
+;;     (fn [db types on-entity-change]
+;;       (let [state @state-atom]
+;;         (-> (ver 0
+;;                  [focus-highlight (-> (text-editor (:text state)
+;;                                                    (fn [new-text]
+;;                                                      (let [entities (if (= "" new-text)
+;;                                                                       []
+;;                                                                       (if types
+;;                                                                         (distinct (mapcat (fn [type]
+;;                                                                                             (search-entities db type new-text))
+;;                                                                                           types))
+;;                                                                         (distinct (search-entities db new-text))))]
+;;                                                        (swap! state-atom
+;;                                                               (fn [state]
+;;                                                                 (assoc state
+;;                                                                        :results entities
+;;                                                                        :selected-index 0
+;;                                                                        :text new-text))))))
+;;                                       (assoc :local-id :prompt-editor))]
+;;                  (when (and (keyboard/sub-component-is-focused?)
+;;                             (not (empty? (:results state))))
+;;                    (layouts/hover {:z 4}
+;;                                   (box (layouts/vertically-2 {}
+;;                                                              (map-indexed (fn [index statement]
+;;                                                                             (-> (highlight-2 (= index (:selected-index state))
+;;                                                                                              (value-view db statement))
+;;                                                                                 (assoc :mouse-event-handler [on-click-mouse-event-handler (fn []
+;;                                                                                                                                             (on-entity-change statement))])))
+;;                                                                           (:results state)))))))
+;;             (assoc :command-set (prompt-command-set state-atom db on-entity-change)))))))
 
 (defn prompt-2-command-set [state-atom commands]
   (let [state @state-atom]
@@ -1451,8 +1451,7 @@
                             (not (empty? the-commands))
                             (:show-dropdown? state)
                             #_(not (empty? (:results state))))
-                   (layouts/hover {:z 4}
-                                  (box (layouts/vertically-2 {}
+                   (layouts/hover (box (layouts/vertically-2 {}
                                                              (map-indexed (fn [index command]
                                                                             (-> (highlight-2 (= index (:selected-index state))
                                                                                              (chor 40
@@ -1843,71 +1842,71 @@
 
   event)
 
-(defn entity-array-attribute-editor [_db _entity _attribute]
-  (let [state-atom (dependable-atom/atom "entity-array-attribute-editor-state"
-                                         {})]
-    (fn entity-array-attribute-editor [db entity attribute]
+;; (defn entity-array-attribute-editor [_db _entity _attribute]
+;;   (let [state-atom (dependable-atom/atom "entity-array-attribute-editor-state"
+;;                                          {})]
+;;     (fn entity-array-attribute-editor [db entity attribute]
 
 
-      (let [state @state-atom
-            array (db-common/value db entity attribute)
-            entity-array-attribute-editor-node-id view-compiler/id]
-        (if (empty? array)
-          ^{:local-id :insertion-prompt}
-          [prompt
-           db
-           [(argumentation :statement)]
-           (fn on-new-entity [new-entity]
-             (transact! db [[:set entity attribute [new-entity]]]))]
-          (-> (ver 0 (map-indexed (fn [index value-entity]
-                                    (let [value-view (-> (highlight-2 (= index (:selected-index state))
-                                                                      (value-view db value-entity))
-                                                         (assoc :mouse-event-handler [focus-on-click-mouse-event-handler]
-                                                                :can-gain-focus? true
-                                                                :array-value true
-                                                                :local-id [:value index]
-                                                                :entity value-entity
-                                                                :keyboard-event-handler [entity-array-attribute-editor-value-view-keyboard-event-handler
-                                                                                         state-atom
-                                                                                         index]))]
+;;       (let [state @state-atom
+;;             array (db-common/value db entity attribute)
+;;             entity-array-attribute-editor-node-id view-compiler/id]
+;;         (if (empty? array)
+;;           ^{:local-id :insertion-prompt}
+;;           [prompt
+;;            db
+;;            [(argumentation :statement)]
+;;            (fn on-new-entity [new-entity]
+;;              (transact! db [[:set entity attribute [new-entity]]]))]
+;;           (-> (ver 0 (map-indexed (fn [index value-entity]
+;;                                     (let [value-view (-> (highlight-2 (= index (:selected-index state))
+;;                                                                       (value-view db value-entity))
+;;                                                          (assoc :mouse-event-handler [focus-on-click-mouse-event-handler]
+;;                                                                 :can-gain-focus? true
+;;                                                                 :array-value true
+;;                                                                 :local-id [:value index]
+;;                                                                 :entity value-entity
+;;                                                                 :keyboard-event-handler [entity-array-attribute-editor-value-view-keyboard-event-handler
+;;                                                                                          state-atom
+;;                                                                                          index]))]
 
-                                      (let [insertion-prompt ^{:local-id :insertion-prompt} [prompt
-                                                                                             db
-                                                                                             [(argumentation :statement)]
-                                                                                             (fn on-new-entity [new-entity]
-                                                                                               (transact! db [[:set entity attribute (insert array (:insertion-index state) new-entity)]])
-                                                                                               (swap! state-atom dissoc :insertion-index)
+;;                                       (let [insertion-prompt ^{:local-id :insertion-prompt} [prompt
+;;                                                                                              db
+;;                                                                                              [(argumentation :statement)]
+;;                                                                                              (fn on-new-entity [new-entity]
+;;                                                                                                (transact! db [[:set entity attribute (insert array (:insertion-index state) new-entity)]])
+;;                                                                                                (swap! state-atom dissoc :insertion-index)
 
-                                                                                               (keyboard/handle-next-scene-graph! (fn [scene-graph]
+;;                                                                                                (keyboard/handle-next-scene-graph! (fn [scene-graph]
 
 
-                                                                                                                                    (->> (scene-graph/find-first #(= entity-array-attribute-editor-node-id
-                                                                                                                                                                     (:id %))
-                                                                                                                                                                 scene-graph)
-                                                                                                                                         (scene-graph/find-first-child #(= [:value (:insertion-index state)]
-                                                                                                                                                                           (:local-id %)))
-                                                                                                                                         (keyboard/set-focused-node!)))))]]
-                                        (cond (and (= index (dec (count array)))
-                                                   (= (inc index) (:insertion-index state)))
-                                              (ver 0
-                                                   value-view
-                                                   insertion-prompt)
+;;                                                                                                                                     (->> (scene-graph/find-first #(= entity-array-attribute-editor-node-id
+;;                                                                                                                                                                      (:id %))
+;;                                                                                                                                                                  scene-graph)
+;;                                                                                                                                          (scene-graph/find-first-child #(= [:value (:insertion-index state)]
+;;                                                                                                                                                                            (:local-id %)))
+;;                                                                                                                                          (keyboard/set-focused-node!)))))]]
+;;                                         (cond (and (= index (dec (count array)))
+;;                                                    (= (inc index) (:insertion-index state)))
+;;                                               (ver 0
+;;                                                    value-view
+;;                                                    insertion-prompt)
 
-                                              (= index (:insertion-index state))
-                                              (ver 0
-                                                   insertion-prompt
-                                                   value-view)
+;;                                               (= index (:insertion-index state))
+;;                                               (ver 0
+;;                                                    insertion-prompt
+;;                                                    value-view)
 
-                                              :else
-                                              value-view))))
-                                  array))
-              (assoc ;; :keyboard-event-handler [entity-array-attribute-editor-keyboard-event-handler state-atom]
-               :command-set (entity-array-attribute-editor-command-set state-atom
-                                                                       db
-                                                                       entity
-                                                                       attribute)
-               ;; :can-gain-focus? true
-               )))))))
+;;                                               :else
+;;                                               value-view))))
+;;                                   array))
+;;               (assoc ;; :keyboard-event-handler [entity-array-attribute-editor-keyboard-event-handler state-atom]
+;;                :command-set (entity-array-attribute-editor-command-set state-atom
+;;                                                                        db
+;;                                                                        entity
+;;                                                                        attribute)
+;;                ;; :can-gain-focus? true
+;;                )))))))
 
 (declare outline-view)
 
@@ -4061,12 +4060,32 @@
                                                                 (highlight-2 true
                                                                              (fn [] (text "trible highlighted text"))))))))))))
 
+
+(defn big-text [string]
+  (text string
+        {:font (font/create-by-name "CourierNewPSMT" 100)}))
+
+(defn z-order-demo []
+  (ver 0
+       (ver 0
+            (big-text "1")
+            (layouts/hover (box (ver 0
+                                     (big-text "1.2")
+                                     (big-text "1.3"))
+                                {:fill-color [0 100 0 220]})))
+       {:view-call [box [big-text "2"]
+                    {:fill-color [100 1 0 220]}]
+
+        :z 0}
+       (big-text "3")))
+
 (defn start []
   (println "\n\n------------ start -------------\n\n")
   (reset! event-channel-atom
           (application/start-application ;; ui
            ;; #'grid-demo
-           #'notebook-ui
+            #'notebook-ui
+           ;; #'z-order-demo
            ;; #'split-demo
            ;; #'performance-test-root
            ;; #'image-cache-test-root
