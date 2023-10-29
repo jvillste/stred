@@ -2944,34 +2944,40 @@
                                 :label (:text results)
                                 :available? (constantly true)
                                 :key-patterns [[#{:control} :c] [#{:control} :c]]}]
-                              #_(for [[index type] (map-indexed vector
-                                                                (into [] (let [types (common/entities-from-ave (common/index db :ave)
-                                                                                                               (prelude :type-attribute)
-                                                                                                               (prelude :type-type))]
-                                                                           (concat (filter temporary-ids/temporary-id?
-                                                                                           types)
-                                                                                   (filter (fn [type]
-                                                                                             (= "uncommitted"
-                                                                                                (:stream-id type)))
-                                                                                           types)
-                                                                                   (filter (fn [type]
-                                                                                             (= "base"
-                                                                                                (:stream-id type)))
-                                                                                           types)
-                                                                                   [(prelude :type-type)
-                                                                                    (prelude :attribute)]))))]
+                              (for [[index type] (map-indexed vector
+                                                              (into [] (let [types (common/entities-from-ave (common/index db :ave)
+                                                                                                             (prelude :type-attribute)
+                                                                                                             (prelude :type-type))]
+                                                                         (concat (remove (fn [type]
+                                                                                           (or (= "prelude"
+                                                                                                  (:stream-id type))
+                                                                                               (= "stred"
+                                                                                                   (:stream-id type))))
+                                                                                         types)
+                                                                                 ;; (filter temporary-ids/temporary-id?
+                                                                                 ;;         types)
+                                                                                 ;; (filter (fn [type]
+                                                                                 ;;           (= "uncommitted"
+                                                                                 ;;              (:stream-id type)))
+                                                                                 ;;         types)
+                                                                                 ;; (filter (fn [type]
+                                                                                 ;;           (= "base"
+                                                                                 ;;              (:stream-id type)))
+                                                                                 ;;         types)
+                                                                                 [(prelude :type-type)
+                                                                                  (prelude :attribute)]))))]
 
-                                  (let [key (nth [:j :k :l :ö :f :d :s :a :u :i :o :p :r :e :w :q]
-                                                 index
-                                                 nil)]
+                                (let [key (nth [:j :k :l :ö :f :d :s :a :u :i :o :p :r :e :w :q]
+                                               index
+                                               nil)]
 
-                                    {:name (str "Create " (:stream-id type) "/" (label db type))
-                                     :available? (constantly true)
-                                     :key-patterns (if key
-                                                     [[#{:control} :c] [#{:control} key]]
-                                                     nil)
-                                     :type type
-                                     :label (:text results)}))))
+                                  {:name (str "Create " (:stream-id type) "/" (label db type))
+                                   :available? (constantly true)
+                                   :key-patterns (if key
+                                                   [[#{:control} :c] [#{:control} key]]
+                                                   nil)
+                                   :type type
+                                   :label (:text results)}))))
 
                     (fn item-view [db view]
                       (condp = (db-common/value db
