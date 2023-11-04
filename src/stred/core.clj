@@ -44,6 +44,14 @@
    [argumentica.db.common :as common]))
 
 
+(defn assoc-last [& arguments]
+  (apply assoc (last arguments)
+         (drop-last arguments)))
+
+(deftest test-assoc-last
+  (is (= {:y 2, :x 1}
+         (assoc-last :x 1 {:y 2}))))
+
 (def escape-key-pattern-sequences [[[#{:control} :g]]
                                    [[#{} :escape]]])
 
@@ -1716,9 +1724,9 @@
                                                                                 state-atom
                                                                                 index]))
                                   insertion-prompt
-                                  (layouts/apply-properties {:local-id :insertion-prompt
-                                                             :command-set command-set}
-                                                            [prompt-2
+                                  (assoc-last :local-id :insertion-prompt
+                                              :command-set command-set
+                                              (layouts/wrap [prompt-2
                                                              run-query
                                                              (fn [results]
                                                                (for [item (available-items results)]
@@ -1741,7 +1749,7 @@
                                                                                                                           (scene-graph/get-in-path scene-graph)
                                                                                                                           (scene-graph/find-first-breath-first #(= [:value (:insertion-index state)]
                                                                                                                                                                    (:local-id %)))
-                                                                                                                          (keyboard/set-focused-node!))))))))])]
+                                                                                                                          (keyboard/set-focused-node!))))))))]))]
 
                               (cond (and (= index (dec (count array)))
                                          (= (inc index) (:insertion-index state)))
@@ -2080,13 +2088,6 @@
                                                                                                             (:local-id %)))
                                                                    (scene-graph/find-first-breath-first :can-gain-focus?)
                                                                    (keyboard/set-focused-node!)))))}]}))
-(defn assoc-last [& arguments]
-  (apply assoc (last arguments)
-         (drop-last arguments)))
-
-(deftest test-assoc-last
-  (is (= {:y 2, :x 1}
-         (assoc-last :x 1 {:y 2}))))
 
 
 (defn focus-on-prompt [scene-graph]
