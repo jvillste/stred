@@ -1567,9 +1567,9 @@
 
 
 (defn focus-insertion-prompt [scene-graph parent-node-id]
-  (->> (scene-graph/find-first-breath-first #(= parent-node-id
-                                                (:id %))
-                                            scene-graph)
+  (->> parent-node-id
+       (scene-graph/id-to-local-id-path)
+       (scene-graph/get-in-path scene-graph)
        (scene-graph/find-first-breath-first #(= :insertion-prompt
                                                 (:local-id %)))
        (scene-graph/find-first-breath-first :can-gain-focus?)
@@ -1605,16 +1605,17 @@
 
                                  (when (< 1 (count array))
                                    (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                        (->> (scene-graph/find-first #(= (:id subtree)
-                                                                                                         (:id %))
-                                                                                                     scene-graph)
+                                                                        (->> (:id subtree)
+                                                                             (drop-last)
+                                                                             (scene-graph/id-to-local-id-path)
+                                                                             (scene-graph/get-in-path scene-graph)
                                                                              (scene-graph/find-first-child #(= [:value (min (:selected-index state)
                                                                                                                             (- (count array)
                                                                                                                                2))]
                                                                                                                (:local-id %)))
                                                                              (keyboard/set-focused-node!))))))}
 
-                        {:name "insert above"
+                        {:name "insert before"
                          :available? (:selected-index state)
                          :key-patterns [[#{:control :shift} :i]]
                          :run! (fn [subtree]
@@ -1625,9 +1626,9 @@
                                               (dissoc :selected-index))))
                                  (keyboard/handle-next-scene-graph! (fn [scene-graph]
                                                                       (focus-insertion-prompt scene-graph
-                                                                                              (:id subtree)))))}
+                                                                                              (drop-last (:id subtree))))))}
 
-                        {:name "insert below"
+                        {:name "insert after"
                          :available? (:selected-index state)
                          :key-patterns [[#{:control} :i]]
                          :run! (fn [subtree]
@@ -1638,26 +1639,18 @@
                                               (dissoc :selected-index))))
                                  (keyboard/handle-next-scene-graph! (fn [scene-graph]
                                                                       (focus-insertion-prompt scene-graph
-                                                                                              (:id subtree)))))}
+                                                                                              (drop-last (:id subtree))))))}
 
-                        {:name "move up"
+                        {:name "move backward"
                          :available? (and (:selected-index state)
                                           (< 0 (:selected-index state)))
                          :key-patterns [[#{:meta} :p]]
                          :run! (fn [subtree]
                                  (transact! db [[:set entity attribute (vec (move-left (:selected-index state)
                                                                                        array))]])
-                                 (swap! state-atom update :selected-index dec)
+                                 (swap! state-atom update :selected-index dec))}
 
-                                 (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                      (->> (scene-graph/find-first-breath-first #(= (:id subtree)
-                                                                                                                    (:id %))
-                                                                                                                scene-graph)
-                                                                           (scene-graph/find-first-breath-first #(= [:value (dec (:selected-index state))]
-                                                                                                                    (:local-id %)))
-                                                                           (keyboard/set-focused-node!)))))}
-
-                        {:name "move down"
+                        {:name "move forward"
                          :available? (and (:selected-index state)
                                           (< (:selected-index state)
                                              (dec (count array))))
@@ -1666,15 +1659,7 @@
                                  (transact! db [[:set entity attribute (vec (move-right (:selected-index state)
                                                                                         array))]])
 
-                                 (swap! state-atom update :selected-index inc)
-
-                                 (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                      (->> (scene-graph/find-first-breath-first #(= (:id subtree)
-                                                                                                                    (:id %))
-                                                                                                                scene-graph)
-                                                                           (scene-graph/find-first-breath-first #(= [:value (inc (:selected-index state))]
-                                                                                                                    (:local-id %)))
-                                                                           (keyboard/set-focused-node!)))))}]
+                                 (swap! state-atom update :selected-index inc))}]
                        (when allow-array-spreading?
                          [{:name "spread array"
                            :available? true
@@ -1696,6 +1681,81 @@
 
   event)
 
+(defn array-editor-nodes [state-atom db entity attribute new-item-transaction run-query available-items item-view show-empty-prompt? allow-array-spreading? item-removal-transaction item-commands]
+  (let [state @state-atom
+        array (db-common/value db entity attribute)]
+    (if (and (empty? array)
+             show-empty-prompt?)
+      [^{:local-id :insertion-prompt}
+       [prompt-2
+        run-query
+        (fn [results]
+          (for [item (available-items results)]
+            (assoc item
+                   :run! (fn [_subtree]
+                           (let [{:keys [item-id transaction]} (new-item-transaction item)]
+                             (transact! db (concat transaction
+                                                   [[:set entity attribute [item-id]]])))))))]]
+      (apply concat
+             (map-indexed (fn [index value-entity]
+                            (let [command-set (array-editor-command-set state-atom
+                                                                        db
+                                                                        entity
+                                                                        attribute
+                                                                        allow-array-spreading?
+                                                                        item-removal-transaction
+                                                                        item-commands)
+                                  item-view (-> (highlight-2 (= index (:selected-index state))
+                                                             [item-view db value-entity])
+                                                (assoc :local-id [:value index]
+                                                       :mouse-event-handler [focus-on-click-mouse-event-handler]
+                                                       :can-gain-focus? true
+                                                       :array-value true
+                                                       :command-set command-set
+                                                       :keyboard-event-handler [array-editor-item-view-keyboard-event-handler
+                                                                                state-atom
+                                                                                index]))
+                                  insertion-prompt
+                                  (layouts/apply-properties {:local-id :insertion-prompt
+                                                             :command-set command-set}
+                                                            [prompt-2
+                                                             run-query
+                                                             (fn [results]
+                                                               (for [item (available-items results)]
+                                                                 (assoc item
+                                                                        :run! (fn [subtree]
+                                                                                (let [{:keys [item-id transaction]} (new-item-transaction item)]
+                                                                                  (transact! db (concat transaction
+                                                                                                        [[:set entity attribute (insert array (:insertion-index state) item-id)]])))
+                                                                                (swap! state-atom dissoc :insertion-index)
+
+                                                                                (keyboard/handle-next-scene-graph! (fn [scene-graph]
+                                                                                                                     (->> (:id subtree)
+                                                                                                                          (scene-graph/id-to-local-id-path)
+                                                                                                                          (reverse)
+                                                                                                                          (drop-while (fn [local-id]
+                                                                                                                                        (not (= local-id
+                                                                                                                                                :insertion-prompt))))
+                                                                                                                          (drop 1)
+                                                                                                                          (reverse)
+                                                                                                                          (scene-graph/get-in-path scene-graph)
+                                                                                                                          (scene-graph/find-first-breath-first #(= [:value (:insertion-index state)]
+                                                                                                                                                                   (:local-id %)))
+                                                                                                                          (keyboard/set-focused-node!))))))))])]
+
+                              (cond (and (= index (dec (count array)))
+                                         (= (inc index) (:insertion-index state)))
+                                    [item-view
+                                     insertion-prompt]
+
+                                    (= index (:insertion-index state))
+                                    [insertion-prompt
+                                     item-view]
+
+                                    :else
+                                    [item-view])))
+                          array)))))
+
 (defn array-editor [_db _entity _attribute _item-removal-transaction _new-item-transaction _run-query _available-items _item-view & [_options]]
   (let [state-atom (dependable-atom/atom "array-editor-state"
                                          {})]
@@ -1704,131 +1764,74 @@
                                                                                                                                        allow-array-spreading?]
                                                                                                                                 :or {show-empty-prompt? true
                                                                                                                                      allow-array-spreading? false}}]]
-      (let [state @state-atom
-            array (db-common/value db entity attribute)
-            array-editor-node-id view-compiler/id]
-        (if (and (empty? array)
-                 show-empty-prompt?)
-          ^{:local-id :insertion-prompt}
-          [prompt-2
-           run-query
-           (fn [results]
-             (for [item (available-items results)]
-               (assoc item
-                      :run! (fn [_subtree]
-                              (let [{:keys [item-id transaction]} (new-item-transaction item)]
-                                (transact! db (concat transaction
-                                                      [[:set entity attribute [item-id]]])))))))]
-          (-> (ver 0
-                   (map-indexed (fn [index value-entity]
-                                  (let [item-view (-> (highlight-2 (= index (:selected-index state))
-                                                                   (with-meta [item-view db value-entity]
-                                                                     {:mouse-event-handler [focus-on-click-mouse-event-handler]
-                                                                      :can-gain-focus? true
-                                                                      :array-value true
-                                                                      :local-id [:value index]
-                                                                      :keyboard-event-handler [array-editor-item-view-keyboard-event-handler
-                                                                                               state-atom
-                                                                                               index]})))
-                                        insertion-prompt ^{:local-id :insertion-prompt} [prompt-2
-                                                                                         run-query
-                                                                                         (fn [results]
-                                                                                           (for [item (available-items results)]
-                                                                                             (assoc item
-                                                                                                    :run! (fn [subtree]
-                                                                                                            (let [{:keys [item-id transaction]} (new-item-transaction item)]
-                                                                                                              (transact! db (concat transaction
-                                                                                                                                    [[:set entity attribute (insert array (:insertion-index state) item-id)]])))
-                                                                                                            (swap! state-atom dissoc :insertion-index)
+      (apply ver
+             0
+             (array-editor-nodes state-atom
+                                 db
+                                 entity
+                                 attribute
+                                 new-item-transaction
+                                 run-query
+                                 available-items
+                                 item-view
+                                 show-empty-prompt?
+                                 allow-array-spreading?
+                                 item-removal-transaction
+                                 item-commands)))))
 
-                                                                                                            (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                                                                                                 (->> (scene-graph/find-first-breath-first #(= array-editor-node-id
-                                                                                                                                                                                               (:id %))
-                                                                                                                                                                                           scene-graph)
-                                                                                                                                                      (scene-graph/find-first-breath-first #(= [:value (:insertion-index state)]
-                                                                                                                                                                                               (:local-id %)))
-                                                                                                                                                      (scene-graph/find-first-breath-first :can-gain-focus?)
-                                                                                                                                                      (keyboard/set-focused-node!))))))))]]
+;; (defn entity-array-attribute-editor-command-set [state-atom db entity attribute]
+;;   (let [state @state-atom
+;;         array (db-common/value db entity attribute)]
+;;     {:name "entity array editor"
+;;      :commands [{:name "cancel insertion"
+;;                  :available? (:insertion-index state)
+;;                  :key-patterns escape-key-pattern-sequences
+;;                  :run! (fn [_subtree]
+;;                          (swap! state-atom dissoc :insertion-index))}
 
-                                    (cond (and (= index (dec (count array)))
-                                               (= (inc index) (:insertion-index state)))
-                                          (ver 0
-                                               item-view
-                                               insertion-prompt)
+;;                 {:name "delete selected"
+;;                  :available? (and (not (:insertion-index state))
+;;                                   (not (empty? array)))
+;;                  :key-patterns [[#{:control} :d]]
+;;                  :run! (fn [subtree]
+;;                          (transact! db [[:set entity attribute (drop-index (:selected-index state)
+;;                                                                            array)]])
 
-                                          (= index (:insertion-index state))
-                                          (ver 0
-                                               insertion-prompt
-                                               item-view)
+;;                          (when (< 1 (count array))
+;;                            (keyboard/handle-next-scene-graph! (fn [scene-graph]
+;;                                                                 (->> (scene-graph/find-first #(= (:id subtree)
+;;                                                                                                  (:id %))
+;;                                                                                              scene-graph)
+;;                                                                      (scene-graph/find-first-child #(= [:value (min (:selected-index state)
+;;                                                                                                                     (- (count array)
+;;                                                                                                                        2))]
+;;                                                                                                        (:local-id %)))
+;;                                                                      (keyboard/set-focused-node!))))))}
 
-                                          :else
-                                          item-view)))
-                                array))
-              (assoc
-               ;; :keyboard-event-handler [entity-array-attribute-editor-keyboard-event-handler state-atom]
-               :command-set (array-editor-command-set state-atom
-                                                      db
-                                                      entity
-                                                      attribute
-                                                      allow-array-spreading?
-                                                      item-removal-transaction
-                                                      item-commands)
-               ;; :can-gain-focus? true
-               )))))))
-
-(defn entity-array-attribute-editor-command-set [state-atom db entity attribute]
-  (let [state @state-atom
-        array (db-common/value db entity attribute)]
-    {:name "entity array editor"
-     :commands [{:name "cancel insertion"
-                 :available? (:insertion-index state)
-                 :key-patterns escape-key-pattern-sequences
-                 :run! (fn [_subtree]
-                         (swap! state-atom dissoc :insertion-index))}
-
-                {:name "delete selected"
-                 :available? (and (not (:insertion-index state))
-                                  (not (empty? array)))
-                 :key-patterns [[#{:control} :d]]
-                 :run! (fn [subtree]
-                         (transact! db [[:set entity attribute (drop-index (:selected-index state)
-                                                                           array)]])
-
-                         (when (< 1 (count array))
-                           (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                (->> (scene-graph/find-first #(= (:id subtree)
-                                                                                                 (:id %))
-                                                                                             scene-graph)
-                                                                     (scene-graph/find-first-child #(= [:value (min (:selected-index state)
-                                                                                                                    (- (count array)
-                                                                                                                       2))]
-                                                                                                       (:local-id %)))
-                                                                     (keyboard/set-focused-node!))))))}
-
-                {:name "insert above"
-                 :available? true
-                 :key-patterns [[#{:control} :i]]
-                 :run! (fn [subtree]
-                         (swap! state-atom
-                                (fn [state]
-                                  (-> state
-                                      (assoc :insertion-index (:selected-index state))
-                                      (dissoc :selected-index))))
-                         (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                              (focus-insertion-prompt scene-graph
-                                                                                      (:id subtree)))))}
-                {:name "insert below"
-                 :available? true
-                 :key-patterns [[#{:control :shift} :i]]
-                 :run! (fn [subtree]
-                         (swap! state-atom
-                                (fn [state]
-                                  (-> state
-                                      (assoc :insertion-index (inc (:selected-index state)))
-                                      (dissoc :selected-index))))
-                         (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                              (focus-insertion-prompt scene-graph
-                                                                                      (:id subtree)))))}]}))
+;;                 {:name "insert above"
+;;                  :available? true
+;;                  :key-patterns [[#{:control} :i]]
+;;                  :run! (fn [subtree]
+;;                          (swap! state-atom
+;;                                 (fn [state]
+;;                                   (-> state
+;;                                       (assoc :insertion-index (:selected-index state))
+;;                                       (dissoc :selected-index))))
+;;                          (keyboard/handle-next-scene-graph! (fn [scene-graph]
+;;                                                               (focus-insertion-prompt scene-graph
+;;                                                                                       (:id subtree)))))}
+;;                 {:name "insert below"
+;;                  :available? true
+;;                  :key-patterns [[#{:control :shift} :i]]
+;;                  :run! (fn [subtree]
+;;                          (swap! state-atom
+;;                                 (fn [state]
+;;                                   (-> state
+;;                                       (assoc :insertion-index (inc (:selected-index state)))
+;;                                       (dissoc :selected-index))))
+;;                          (keyboard/handle-next-scene-graph! (fn [scene-graph]
+;;                                                               (focus-insertion-prompt scene-graph
+;;                                                                                       (:id subtree)))))}]}))
 
 (defn entity-array-attribute-editor-value-view-keyboard-event-handler [state-atom index _subtree event]
   ;; (prn 'event event)
@@ -1961,19 +1964,6 @@
                    (add-lens entity))}])
    {:allow-array-spreading? true}])
 
-
-
-(comment
-  (scene-graph/print-scene-graph (scene-graph/select-node-keys [:id]
-                                                               (->> (scene-graph/find-first-breath-first #(= array-editor-node-id
-                                                                                                             (:id %))
-                                                                                                         scene-graph)
-                                                                    #_(scene-graph/find-first-breath-first #(= :insertion-prompt
-                                                                                                               (:local-id %)))
-                                                                    #_(scene-graph/find-first-breath-first :can-gain-focus?))))
-
-
-  ) ;; TODO: remove me
 
 
 (defn sort-entity-ids [entity-ids]
@@ -2113,7 +2103,7 @@
 (defn entity-attribute-editor [_db _entity _attribute _lens-map & _options]
   (let [state-atom (dependable-atom/atom "entity-attribute-editor-state"
                                          {:page 0})]
-    (fn [db entity attribute lens-map & [{:keys [reverse? add-lens shared-lens]}]]
+    (fn entity-attribute-editor [db entity attribute lens-map & [{:keys [reverse? add-lens shared-lens]}]]
       (let [state @state-atom
             value-entities (sort-entity-ids (if reverse?
                                               (concat (common/entities db attribute entity)
@@ -2515,8 +2505,8 @@
                                                             (transact! db [[:set editor (stred :reverse?) (not reverse?)]]))}]))
                                :show-empty-prompt? (and (:show-empty-prompt? @state-atom)
                                                         (starts-with? outline-view-id
-                                                                      @focused-node-id))}])))))))
-  )
+                                                                      @focused-node-id))}]))))))))
+
 
 (defn change-view [db change]
   (text (str "["
@@ -3986,7 +3976,7 @@
             "uoa" "temp/uses-of-argument"
             index-definitions)])
 
-  
+
   )
 
 (defn notebook-ui []
@@ -4135,6 +4125,30 @@
 
         :z 0}
        (big-text "3")))
+
+(defn table-demo []
+  (let [db (create-dependable-stream-db-in-memory "base" index-definitions)
+        temporary-id-resolution (:temporary-id-resolution (transact! db (concat (mapcat map-to-transaction/map-to-statements
+                                                                                        [{:dali/id         :tmp/depends-on
+                                                                                          (prelude :label) "depends on"}
+                                                                                         {:dali/id         :tmp/system-1
+                                                                                          (prelude :label) "System 1"
+                                                                                          :tmp/depends-on  #{{:dali/id         :tmp/system-2
+                                                                                                              (prelude :label) "System 2"
+                                                                                                              :tmp/depends-on  :tmp/system-4}
+                                                                                                             {:dali/id         :tmp/system-3
+                                                                                                              (prelude :label) "System 3"
+                                                                                                              :tmp/depends-on  :tmp/system-4}
+                                                                                                             {:dali/id         :tmp/system-4
+                                                                                                              (prelude :label) "System 4"}}}])
+                                                                                stred-transaction
+                                                                                prelude-transaction)))]
+    (common/value db
+                  (:tmp/system-1 temporary-id-resolution)
+                  (prelude :label))
+    ;; (fn []
+    ;;   (root-view state-atom))
+    ))
 
 (defn start []
   (println "\n\n------------ start -------------\n\n")
