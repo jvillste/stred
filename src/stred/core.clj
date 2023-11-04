@@ -75,7 +75,7 @@
          (add-color [100 0 0 0]
                     [200]))))
 
-(def dark-mode (let [text-color [100 100 100 255]
+(def dark-mode (let [text-color [200 200 200 255]
                      background-color [0 0 0 255]]
                  {:background-color background-color
                   :text-color text-color
@@ -967,19 +967,22 @@
          (if (entity-id/entity-id? value)
            (str (:stream-id value)
                 "/"
-                (or (label db value)
-                    (:id value)))
+                (:id value)
+                "/"
+                (label db value)
+                #_(or (label db value)
+                      (:id value)))
            (pr-str value))
 
-         (when-let [type (db-common/value db
-                                          value
-                                          (prelude :type-attribute))]
-           (if (entity-id/entity-id? type)
-             (str "::"
-                  (:stream-id type)
-                  "/"
-                  (label db type))
-             (str type)))
+         #_(when-let [type (db-common/value db
+                                            value
+                                            (prelude :type-attribute))]
+             (if (entity-id/entity-id? type)
+               (str "::"
+                    (:stream-id type)
+                    "/"
+                    (label db type))
+               (str type)))
          "]")
     (pr-str value)))
 
@@ -1713,16 +1716,16 @@
                                                                         allow-array-spreading?
                                                                         item-removal-transaction
                                                                         item-commands)
-                                  item-view (-> (highlight-2 (= index (:selected-index state))
-                                                             [item-view db value-entity])
-                                                (assoc :local-id [:value index]
-                                                       :mouse-event-handler [focus-on-click-mouse-event-handler]
-                                                       :can-gain-focus? true
-                                                       :array-value true
-                                                       :command-set command-set
-                                                       :keyboard-event-handler [array-editor-item-view-keyboard-event-handler
-                                                                                state-atom
-                                                                                index]))
+                                  item-view (assoc (highlight-2 (= index (:selected-index state))
+                                                                (with-meta [item-view db value-entity]
+                                                                  {:local-id [:value index]
+                                                                   :mouse-event-handler [focus-on-click-mouse-event-handler]
+                                                                   :can-gain-focus? true
+                                                                   :array-value true
+                                                                   :keyboard-event-handler [array-editor-item-view-keyboard-event-handler
+                                                                                            state-atom
+                                                                                            index]}))
+                                                   :command-set command-set)
                                   insertion-prompt
                                   (assoc-last :local-id :insertion-prompt
                                               :command-set command-set
@@ -3178,6 +3181,12 @@
                  :y y
                  :local-id local-id}))
 
+(defn stred-change? [change]
+  (some (fn [value]
+          (and (map? value)
+               (= "stred" (:stream-id value))))
+        change))
+
 (defn root-view [state-atom]
   #_(logga.core/write (pr-str 'event-cache
                               (cache/stats cache/state)))
@@ -3292,13 +3301,15 @@
 
                                                 (when (and (not (:show-help? state))
                                                            (:show-uncommitted-changes? state))
+
+
                                                   (ver 0
                                                        (header "Uncommitted changes")
-                                                       (transaction-view (:branch state) (branch-changes (:branch state)) #_the-branch-changes)
+                                                       #_(transaction-view (:branch state) (branch-changes (:branch state)) #_the-branch-changes)
 
                                                        (ver 0 (map (partial change-view (:branch state))
                                                                    (sort comparator/compare-datoms
-                                                                         (branch-changes (:branch state)))))))
+                                                                         (remove stred-change? (branch-changes (:branch state))))))))
 
                                                 ;; (header "Undoed transactions")
                                                 ;; (ver 30 (for [undoed-transaction (:undoed-transactions state)]
