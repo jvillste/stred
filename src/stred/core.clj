@@ -1438,15 +1438,17 @@
     ((:run! command) node))
   event)
 
-(defn prompt-2 [run-query _commands]
+(defn prompt-2 [commands]
   (let [state-atom (dependable-atom/atom "prompt-state"
                                          {:text ""
                                           :selected-index 0
-                                          :results (run-query "")
+                                          :commands (commands "")
                                           :show-dropdown? true})]
-    (fn [run-query commands]
+
+    ;; TODO: combine run-query and commands. run-query hould return commands directly
+    (fn [commands]
       (let [state @state-atom
-            the-commands (commands (:results state))]
+            the-commands (:commands state)]
         (-> (ver 0
                  [focus-highlight (-> (text-editor (:text state)
                                                    (fn [new-text]
@@ -1454,16 +1456,16 @@
                                                             (fn [state]
                                                               (assoc state
                                                                      :show-dropdown? true
-                                                                     :results (if (= "" new-text)
-                                                                                []
-                                                                                (run-query new-text))
+                                                                     :commands (if (= "" new-text)
+                                                                                 []
+                                                                                 (commands new-text))
                                                                      :selected-index 0
                                                                      :text new-text)))))
                                       (assoc :local-id :prompt-editor))]
                  (when (and (keyboard/sub-component-is-focused?)
                             (not (empty? the-commands))
                             (:show-dropdown? state)
-                            #_(not (empty? (:results state))))
+                            #_(not (empty? (:commands state))))
                    (layouts/hover (box (layouts/vertically-2 {}
                                                              (map-indexed (fn [index command]
                                                                             (-> (highlight-2 (= index (:selected-index state))
@@ -1692,16 +1694,15 @@
 
   event)
 
-(defn array-editor-nodes [state-atom db entity attribute new-item-transaction run-query available-items item-view show-empty-prompt? allow-array-spreading? item-removal-transaction item-commands]
+(defn array-editor-nodes [state-atom db entity attribute new-item-transaction available-items item-view show-empty-prompt? allow-array-spreading? item-removal-transaction item-commands]
   (let [state @state-atom
         array (db-common/value db entity attribute)]
     (if (and (empty? array)
              show-empty-prompt?)
       [^{:local-id :insertion-prompt}
        [prompt-2
-        run-query
-        (fn [results]
-          (for [item (available-items results)]
+        (fn [new-text]
+          (for [item (available-items new-text)]
             (assoc item
                    :run! (fn [_subtree]
                            (let [{:keys [item-id transaction]} (new-item-transaction item)]
@@ -1730,9 +1731,8 @@
                                   (assoc-last :local-id :insertion-prompt
                                               :command-set command-set
                                               (layouts/wrap [prompt-2
-                                                             run-query
-                                                             (fn [results]
-                                                               (for [item (available-items results)]
+                                                             (fn [new-text]
+                                                               (for [item (available-items new-text)]
                                                                  (assoc item
                                                                         :run! (fn [subtree]
                                                                                 (let [{:keys [item-id transaction]} (new-item-transaction item)]
@@ -1767,14 +1767,14 @@
                                     [item-view])))
                           array)))))
 
-(defn array-editor [_db _entity _attribute _item-removal-transaction _new-item-transaction _run-query _available-items _item-view & [_options]]
+(defn array-editor [_db _entity _attribute _item-removal-transaction _new-item-transaction _available-items _item-view & [_options]]
   (let [state-atom (dependable-atom/atom "array-editor-state"
                                          {})]
-    (fn array-editor [db entity attribute item-removal-transaction new-item-transaction run-query available-items item-view & [{:keys [item-commands
-                                                                                                                                       show-empty-prompt?
-                                                                                                                                       allow-array-spreading?]
-                                                                                                                                :or {show-empty-prompt? true
-                                                                                                                                     allow-array-spreading? false}}]]
+    (fn array-editor [db entity attribute item-removal-transaction new-item-transaction available-items item-view & [{:keys [item-commands
+                                                                                                                             show-empty-prompt?
+                                                                                                                             allow-array-spreading?]
+                                                                                                                      :or {show-empty-prompt? true
+                                                                                                                           allow-array-spreading? false}}]]
       (apply ver
              0
              (array-editor-nodes state-atom
@@ -1782,7 +1782,6 @@
                                  entity
                                  attribute
                                  new-item-transaction
-                                 run-query
                                  available-items
                                  item-view
                                  show-empty-prompt?
@@ -1946,22 +1945,18 @@
                        (prelude :label)
                        (:label new-item)]])})
 
-   (fn run-query [text]
-     {:text text
-      :entities (if (empty? text)
-                  []
-                  (distinct (search-entities db
-                                             text)))})
-
-   (fn available-items [results]
-     (concat (for [entity (:entities results)]
+   (fn available-items [query-text]
+     (concat (for [entity (if (empty? query-text)
+                            []
+                            (distinct (search-entities db
+                                                       query-text)))]
                {:entity entity
                 :view (value-view db entity)})
-             (when (:text results)
+             (when query-text
                [{:name "Create entity "
                  :available? (constantly true)
                  :key-patterns [[#{:control} :c] [#{:control} :n]]
-                 :label (:text results)}])))
+                 :label query-text}])))
 
    (fn item-view [db entity]
      [outline-view db entity lens-map]
@@ -2145,12 +2140,7 @@
                            (:adding? state))
                    ^{:local-id :adding-prompt}
                    [prompt-2
-                    (fn run-query [text]
-                      {:text text
-                       :entities (distinct (search-entities db
-                                                            text))})
-
-                    (fn commands [results]
+                    (fn commands [query-text]
                       (let [focus-on-new-entity (fn [new-value-entity]
                                                   (keyboard/handle-next-scene-graph! (fn [scene-graph]
                                                                                        (let [new-selected-index (->> (conj value-entities new-value-entity)
@@ -2165,7 +2155,8 @@
                                                                                                                                        (:local-id %)))
                                                                                               (scene-graph/find-first-breath-first :can-gain-focus?)
                                                                                               (keyboard/set-focused-node!))))))]
-                        (concat (for [new-value-entity (:entities results)]
+                        (concat (for [new-value-entity (distinct (search-entities db
+                                                                                  query-text))]
                                   {:view (value-view db new-value-entity)
                                    :available? true
                                    :run! (fn [_subtree]
@@ -2181,7 +2172,7 @@
                                   :available? true
                                   :key-patterns  [[#{:control} :c] [#{:control} :c]]
                                   :run! (fn [_subtree]
-                                          (let [temporary-id-resolution (:temporary-id-resolution (transact! db (concat [[:add :tmp/new-entity (prelude :label) (:text results)]]
+                                          (let [temporary-id-resolution (:temporary-id-resolution (transact! db (concat [[:add :tmp/new-entity (prelude :label) query-text]]
                                                                                                                         (if reverse?
                                                                                                                           [[:add :tmp/new-entity attribute entity]]
                                                                                                                           [[:add entity attribute :tmp/new-entity]]))))
@@ -2199,32 +2190,28 @@
 
 (defn empty-attribute-prompt [db entity attribute reverse?]
   [prompt-2
-   (fn run-query [text]
-     {:text text
-      :entities (distinct (search-entities db
-                                           text))})
-
-   (fn commands [results]
-     (concat (for [value-entity (:entities results)]
+   (fn commands [query-text]
+     (concat (for [value-entity (distinct (search-entities db
+                                                           query-text))]
                {:view (value-view db value-entity)
                 :available? true
                 :run! (fn [_subtree]
                         (transact! db [(if reverse?
                                          [:add value-entity attribute entity]
                                          [:add entity attribute value-entity])]))})
-             (when (and (:text results)
+             (when (and query-text
                         (not reverse?))
-               [{:view (text (pr-str (:text results)))
+               [{:view (text (pr-str query-text))
                  :available? true
                  :key-patterns  [[#{:control} :enter]]
                  :run! (fn [_subtree]
-                         (transact! db [[:add entity attribute (:text results)]]))}])
+                         (transact! db [[:add entity attribute query-text]]))}])
 
              [{:name "Create new entity"
                :available? true
                :key-patterns  [[#{:control} :c] [#{:control} :c]]
                :run! (fn [_subtree]
-                       (transact! db (concat [[:add :tmp/new-entity (prelude :label) (:text results)]]
+                       (transact! db (concat [[:add :tmp/new-entity (prelude :label) query-text]]
                                              (if reverse?
                                                [[:add :tmp/new-entity attribute entity]]
                                                [[:add entity attribute :tmp/new-entity]]))))}]))])
@@ -2295,6 +2282,7 @@
                               (fn item-removal-transaction [editor]
                                 (common/changes-to-remove-component-tree (common/deref db)
                                                                          editor))
+
                               (fn new-item-transaction [new-item]
                                 {:item-id :tmp/new-editor
                                  :transaction (if (:label new-item)
@@ -2322,15 +2310,7 @@
                                                                                               (stred :lens-map) {}}
                                                                                              (when (:reverse? new-item)
                                                                                                {(stred :reverse?) true}))))})
-                              (fn run-query [text]
-                                {:text text
-                                 :attributes (if (empty? text)
-                                               []
-                                               (distinct (search-entities db
-                                                                          (prelude :attribute)
-                                                                          text)))})
-
-                              (fn available-items [results]
+                              (fn available-items [query-text]
                                 (let [existing-attributes-set (->> (common/entity-attributes db entity)
                                                                    #_(remove (fn [attribute]
                                                                                (= "stred" (:stream-id attribute))))
@@ -2343,9 +2323,9 @@
                                       all-existing-attributes (set/union existing-attributes-set
                                                                          existing-reverse-attributes-set)
                                       matched-attribute? (fn [attribute]
-                                                           (or (empty? (:text results))
+                                                           (or (empty? query-text)
                                                                (string/includes? (string/lower-case (label db attribute))
-                                                                                 (string/lower-case (:text results)))))
+                                                                                 (string/lower-case query-text))))
                                       visible-editors (common/value db lens (stred :editors))
                                       visible-attributes-set (->> visible-editors
                                                                   (remove (fn [editor]
@@ -2371,7 +2351,11 @@
                                              :view (text (str "<- " (label db attribute)))
                                              :reverse? true})
                                           (for [attribute (remove all-existing-attributes
-                                                                  (:attributes results))]
+                                                                  (if (empty? text)
+                                                                    []
+                                                                    (distinct (search-entities db
+                                                                                               (prelude :attribute)
+                                                                                               text))))]
                                             {:entity attribute
                                              :view (text (label db attribute))})
                                           ;; (when (not (empty? all-existing-attributes))
@@ -2380,22 +2364,22 @@
                                           ;;     :key-patterns [[#{:control} :c] [#{:control} :a]]
                                           ;;     :existing-attributes-set existing-attributes-set
                                           ;;     :existing-reverse-attributes-set existing-reverse-attributes-set}])
-                                          (when (not (empty? (:text results)))
+                                          (when (not (empty? query-text))
                                             [{:name "Create new attribute"
                                               :available? (constantly true)
                                               :key-patterns [[#{:control} :c] [#{:control} :c]]
-                                              :label (:text results)}
+                                              :label query-text}
 
-                                             ;; {:name (str "Create text attribute " (:text results))
+                                             ;; {:name (str "Create text attribute " query-text)
                                              ;;  :available? (constantly true)
                                              ;;  :key-patterns [[#{:control} :c] [#{:control} :t]]
-                                             ;;  :label (:text results)
+                                             ;;  :label query-text
                                              ;;  :range (prelude :text)}
 
-                                             ;; {:name (str "Create entity attribute " (:text results))
+                                             ;; {:name (str "Create entity attribute " query-text)
                                              ;;  :available? (constantly true)
                                              ;;  :key-patterns [[#{:control} :c] [#{:control} :e]]
-                                             ;;  :label (:text results)
+                                             ;;  :label query-text
                                              ;;  :range (prelude :entity)}
                                              ]))))
 
@@ -2953,18 +2937,14 @@
                                                                                      (stred :lens) {:dali/id :tmp/new-lens}
                                                                                      (stred :entity) :tmp/new-entity})))})
 
-                    (fn run-query [text]
-                      {:text text
-                       :entities (if (empty? text)
-                                   []
-                                   (distinct (search-entities db text)))})
-
-                    (fn available-items [results]
-                      (concat (for [entity (:entities results)]
+                    (fn available-items [query-text]
+                      (concat (for [entity (if (empty? text)
+                                             []
+                                             (distinct (search-entities db text)))]
                                 {:entity entity
                                  :view (value-view db entity)})
                               [{:name "Create new entity"
-                                :label (:text results)
+                                :label query-text
                                 :available? (constantly true)
                                 :key-patterns [[#{:control} :c] [#{:control} :c]]}]
                               (for [[index type] (map-indexed vector
@@ -3000,7 +2980,7 @@
                                                    [[#{:control} :c] [#{:control} key]]
                                                    nil)
                                    :type type
-                                   :label (:text results)}))))
+                                   :label query-text}))))
 
                     (fn item-view [db view]
                       (condp = (db-common/value db
@@ -3129,34 +3109,30 @@
 
 (defn top-prompt [db state-atom]
   [prompt-2
-   (fn run-query [text]
-     {:text text
-      :entities (if (empty? text)
-                  []
-                  (distinct (search-entities db
-                                             (stred :notebook)
-                                             text)))})
-
-   (fn commands [results]
-     (concat (when (not (empty? (:text results)))
+   (fn commands [query-text]
+     (concat (when (not (empty? query-text))
                [{:view (text "create notebook")
                  :run! (fn [_subtree]
                          (let [new-notebook (get (:temporary-id-resolution (transact! db (map-to-transaction/map-to-statements {:dali/id :tmp/new-notebook
                                                                                                                                 (prelude :type-attribute) (stred :notebook)
-                                                                                                                                (prelude :label) (:text results)})))
+                                                                                                                                (prelude :label) query-text})))
                                                  :tmp/new-notebook)]
                            (open-entity! state-atom new-notebook)))}])
 
-             #_(for [value-entity (:entities results)]
+             #_(for [value-entity (if (empty? query-text)
+                                    []
+                                    (distinct (search-entities db
+                                                               (stred :notebook)
+                                                               text)))]
                  {:view (value-view db value-entity)
                   :available? true
                   :run! (fn [_subtree]
                           (open-entity! state-atom value-entity))})
              (for [notebook (filter (fn [notebook]
-                                      (if (:text results)
+                                      (if query-text
                                         (if-let [label (label db notebook)]
                                           (string/includes? (string/lower-case label)
-                                                            (string/lower-case (:text results)))
+                                                            (string/lower-case query-text))
                                           true)
                                         true))
                                     (common/entities db (prelude :type-attribute) (stred :notebook)))]
@@ -4143,6 +4119,8 @@
         temporary-id-resolution (:temporary-id-resolution (transact! db (concat (mapcat map-to-transaction/map-to-statements
                                                                                         [{:dali/id         :tmp/depends-on
                                                                                           (prelude :label) "depends on"}
+                                                                                         {:dali/id         :tmp/lens
+                                                                                          (stred :editors) []}
                                                                                          {:dali/id         :tmp/system-1
                                                                                           (prelude :label) "System 1"
                                                                                           :tmp/depends-on  #{{:dali/id         :tmp/system-2
@@ -4154,13 +4132,18 @@
                                                                                                              {:dali/id         :tmp/system-4
                                                                                                               (prelude :label) "System 4"}}}])
                                                                                 stred-transaction
-                                                                                prelude-transaction)))]
-    (common/value db
-                  (:tmp/system-1 temporary-id-resolution)
-                  (prelude :label))
-    ;; (fn []
-    ;;   (root-view state-atom))
-    ))
+                                                                                prelude-transaction)))
+        state-atom (dependable-atom/atom "array-editor-state"
+                                         {})]
+    #_(common/value db
+                    (:tmp/system-1 temporary-id-resolution)
+                    (prelude :label))
+    (fn []
+      (hor 0 (array-editor-nodes state-atom
+                                 db
+                                 (:tmp/lens temporary-id-resolution)
+                                 (stred :editors)
+                                 )))))
 
 (defn start []
   (println "\n\n------------ start -------------\n\n")
