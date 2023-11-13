@@ -2223,6 +2223,81 @@
                {:font bold-font}))
        editor))
 
+(defn available-lens-editor-items [query-text db lens entities]
+  (let [existing-attributes-set (->> (mapcat #(common/entity-attributes db %)
+                                             entities)
+                                     (remove (fn [attribute]
+                                                 (= "stred" (:stream-id attribute))))
+                                     (set))
+        existing-reverse-attributes-set (->> (mapcat #(concat (common/reverse-entity-attributes db %)
+                                                              (common/entity-sequence-reference-attributes db %))
+                                                     entities)
+                                             (remove (fn [attribute]
+                                                         (= "stred" (:stream-id attribute))))
+                                             (set))
+        all-existing-attributes (set/union existing-attributes-set
+                                           existing-reverse-attributes-set)
+        matched-attribute? (fn [attribute]
+                             (or (empty? query-text)
+                                 (string/includes? (string/lower-case (label db attribute))
+                                                   (string/lower-case query-text))))
+        visible-editors (common/value db lens (stred :editors))
+        visible-attributes-set (->> visible-editors
+                                    (remove (fn [editor]
+                                              (common/value db editor (stred :reverse?))))
+                                    (map (fn [editor]
+                                           (common/value db editor (stred :attribute))))
+                                    (into #{}))
+        visible-reverse-attributes-set (->> visible-editors
+                                            (filter (fn [editor]
+                                                      (common/value db editor (stred :reverse?))))
+                                            (map (fn [editor]
+                                                   (common/value db editor (stred :attribute))))
+                                            (into #{}))]
+    (concat (for [attribute (remove visible-attributes-set
+                                    (filter matched-attribute?
+                                            existing-attributes-set))]
+              {:entity attribute
+               :view (text (str "-> " (label db attribute)))})
+            (for [attribute (remove visible-reverse-attributes-set
+                                    (filter matched-attribute?
+                                            existing-reverse-attributes-set))]
+              {:entity attribute
+               :view (text (str "<- " (label db attribute)))
+               :reverse? true})
+            (for [attribute (remove all-existing-attributes
+                                    (if (empty? query-text)
+                                      []
+                                      (distinct (search-entities db
+                                                                 (prelude :attribute)
+                                                                 query-text))))]
+              {:entity attribute
+               :view (text (label db attribute))})
+            ;; (when (not (empty? all-existing-attributes))
+            ;;   [{:name (str "Add all existing attributes")
+            ;;     :available? (constantly true)
+            ;;     :key-patterns [[#{:control} :c] [#{:control} :a]]
+            ;;     :existing-attributes-set existing-attributes-set
+            ;;     :existing-reverse-attributes-set existing-reverse-attributes-set}])
+            (when (not (empty? query-text))
+              [{:name "Create new attribute"
+                :available? (constantly true)
+                :key-patterns [[#{:control} :c] [#{:control} :c]]
+                :label query-text}
+
+               ;; {:name (str "Create text attribute " query-text)
+               ;;  :available? (constantly true)
+               ;;  :key-patterns [[#{:control} :c] [#{:control} :t]]
+               ;;  :label query-text
+               ;;  :range (prelude :text)}
+
+               ;; {:name (str "Create entity attribute " query-text)
+               ;;  :available? (constantly true)
+               ;;  :key-patterns [[#{:control} :c] [#{:control} :e]]
+               ;;  :label query-text
+               ;;  :range (prelude :entity)}
+               ]))))
+
 (defn outline-view [_db _entity _lens & [_options]]
   (let [state-atom (dependable-atom/atom {})]
     (fn [db entity lens & [{:keys [add-lens]}]]
@@ -2311,7 +2386,8 @@
                                                                                              (when (:reverse? new-item)
                                                                                                {(stred :reverse?) true}))))})
                               (fn available-items [query-text]
-                                (let [existing-attributes-set (->> (common/entity-attributes db entity)
+                                (available-lens-editor-items query-text db lens [entity])
+                                #_(let [existing-attributes-set (->> (common/entity-attributes db entity)
                                                                    #_(remove (fn [attribute]
                                                                                (= "stred" (:stream-id attribute))))
                                                                    (set))
@@ -2522,13 +2598,15 @@
 (defn command-help [triggered-key-patterns query-text command-sets]
   (ver 20
        (when (not (empty? query-text))
-         (text query-text))
+         (text (string/replace query-text
+                               #"[^a-z]"
+                               "")))
        (when (not (empty? triggered-key-patterns))
          (text triggered-key-patterns))
        (for [command-set command-sets]
          (ver 0
               (text (:name command-set)
-                    {:font bold-font})
+                      {:font bold-font})
               (for [command (filter (fn [command]
                                       (and (string/includes? (:name command)
                                                              query-text)
@@ -2938,9 +3016,9 @@
                                                                                      (stred :entity) :tmp/new-entity})))})
 
                     (fn available-items [query-text]
-                      (concat (for [entity (if (empty? text)
+                      (concat (for [entity (if (empty? query-text)
                                              []
-                                             (distinct (search-entities db text)))]
+                                             (distinct (search-entities db query-text)))]
                                 {:entity entity
                                  :view (value-view db entity)})
                               [{:name "Create new entity"
@@ -3163,6 +3241,222 @@
                (= "stred" (:stream-id value))))
         change))
 
+
+(defn root-view-command-set [state-atom]
+  (let [state @state-atom]
+    {:name "root"
+     :commands [{:name "toggle view cache misses highlighting"
+                 :available? true
+                 :key-patterns [[#{:meta} :e]]
+                 :run! (fn [_subtree]
+                         (swap! application/application-loop-state-atom
+                                update :highlight-view-call-cache-misses? not))}
+                {:name "toggle viewing of entity ids"
+                 :available? true
+                 :key-patterns [[#{:meta} :w]]
+                 :run! (fn [_subtree]
+                         (swap! application/state-atom
+                                update :show-entity-ids? not))}
+                {:name "descent focus"
+                 :available? true
+                 :key-patterns [[[#{:meta} :d]]
+                                #_[[#{:control} :e]]]
+                 :run! (fn [_subtree]
+                         (when-let [focusable-child (scene-graph/find-first-child :can-gain-focus?
+                                                                                  (scene-graph/find-first #(= (-> @keyboard/state-atom :focused-node-id)
+                                                                                                              (:id %))
+                                                                                                          scene-graph/current-scene-graph))]
+                           (keyboard/set-focused-node! focusable-child)))}
+
+                {:name "ascent focus"
+                 :available? true
+                 :key-patterns [[[#{:meta} :a]]
+                                #_[[#{:control} :a]]]
+                 :run! (fn [_subtree]
+                         (when-let [focusable-ancestor (medley/find-first :can-gain-focus?
+                                                                          (rest (reverse (scene-graph/path-to scene-graph/current-scene-graph
+                                                                                                              (-> @keyboard/state-atom :focused-node-id)))))]
+                           (keyboard/set-focused-node! focusable-ancestor)))}
+
+                {:name "move focus left"
+                 :available? true
+                 :key-patterns [[#{:control} :b]]
+                 :run! (fn [_subtree]
+                         (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
+                                               (partial scene-graph/closest-horizontal-nodes
+                                                        (keyboard/focused-node-id @keyboard/state-atom))
+                                               dec
+                                               keyboard/cycle-position))}
+
+                {:name "move focus right"
+                 :available? true
+                 :key-patterns [[#{:control} :f]]
+                 :run! (fn [_subtree]
+                         (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
+                                               (partial scene-graph/closest-horizontal-nodes
+                                                        (keyboard/focused-node-id @keyboard/state-atom))
+                                               inc
+                                               keyboard/cycle-position))}
+
+                {:name "move focus down"
+                 :available? true
+                 :key-patterns [[[#{:control} :n]]
+                                #_[[#{:meta} :n]]]
+                 :run! (fn [_subtree]
+                         (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
+                                               (partial scene-graph/closest-vertical-nodes
+                                                        @focused-node-id)
+                                               inc
+                                               keyboard/cycle-position))}
+
+                {:name "move focus up"
+                 :available? true
+                 :key-patterns [[#{:control} :p]]
+                 :run! (fn [_subtree]
+                         (keyboard/move-focus! scene-graph/current-scene-graph
+                                               (partial scene-graph/closest-vertical-nodes
+                                                        @focused-node-id)
+                                               dec
+                                               keyboard/cycle-position))}
+
+                {:name "move focus forward"
+                 :available? true
+                 :key-patterns [[#{} :tab]]
+                 :run! (fn [_subtree]
+                         (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
+                                               keyboard/order-nodes-down-right
+                                               inc
+                                               keyboard/cycle-position))}
+
+                {:name "move focus backward"
+                 :available? true
+                 :key-patterns [[#{:shift} :tab]]
+                 :run! (fn [_subtree]
+                         (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
+                                               keyboard/order-nodes-down-right
+                                               dec
+                                               keyboard/cycle-position))}
+                {:name "quit"
+                 :available? true
+                 :key-patterns [[#{:meta} :escape]]
+                 :run! (fn [_subtree]
+                         (application/send-event! {:type :close-requested}))}
+
+                {:name "move focus to prompt"
+                 :available? true
+                 :key-patterns [[#{:meta} :o]]
+                 :run! (fn [subtree]
+                         (focus-on-prompt subtree))}
+
+                {:name "open previous entity"
+                 :available? (not (empty? (:previous-entities @state-atom)))
+                 :key-patterns [[#{:meta} :comma]]
+                 :run! (fn [subtree]
+                         (swap! state-atom (fn [state]
+                                             (-> state
+                                                 (assoc :entity (:entity (last (:previous-entities state))))
+                                                 (update :previous-entities drop-last))) )
+                         (when-let [node-id (:node-id (last (:previous-entities state)))]
+                           (keyboard/handle-next-scene-graph! (fn [scene-graph]
+                                                                (keyboard/set-focused-node! (scene-graph/find-first #(= node-id
+                                                                                                                        (:id %))
+                                                                                                                    scene-graph))))))}
+
+                {:name "open focused entity"
+                 :available? @focused-entity
+                 :key-patterns [[#{:meta} :period]]
+                 :run! (fn [_subtree]
+                         (open-entity! state-atom
+                                       @focused-entity
+                                       {:node-id @keyboard/focused-node}))}
+
+                {:name "create supporting argument"
+                 :available? true
+                 :key-patterns [[#{:control} :c] [#{:control} :a]]
+                 :run! (fn [_subtree]
+
+                         (let [new-argument-id (-> (transact! (:branch state)
+                                                              [[:add
+                                                                :tmp/new-argument
+                                                                (prelude :type-attribute)
+                                                                (argumentation :argument)]
+
+                                                               [:add
+                                                                :tmp/new-argument
+                                                                (argumentation :supports)
+                                                                (:entity state)]])
+                                                   :temporary-id-resolution
+                                                   :tmp/new-argument)]
+
+                           (keyboard/handle-next-scene-graph! (fn [scene-graph]
+                                                                (->> scene-graph
+                                                                     (scene-graph/find-first #(= new-argument-id
+                                                                                                 (:local-id %)))
+                                                                     (scene-graph/find-first-child :can-gain-focus?)
+                                                                     (keyboard/set-focused-node!))))))}
+
+                {:name "commit changes"
+                 :available? (not (empty? (branch-changes (:branch state))))
+                 :key-patterns [[#{:meta} :s]]
+                 :run! (fn [_subtree]
+                         (transact! (:stream-db state)
+                                    (->> (branch-changes (:branch state))
+                                         (map (partial stream-entity-ids-to-temporary-ids (:id (:branch state))))))
+                         (swap! state-atom assoc :branch (create-stream-db-branch "uncommitted" (db-common/deref (:stream-db state)))))}
+
+                {:name "delete focused entity"
+                 :available? @focused-entity
+                 :key-patterns [[#{:control} :c] [#{:control} :x]]
+                 :run! (fn [_subtree]
+                         (transact! (:branch state)
+                                    (db-common/changes-to-remove-component-tree (db-common/deref (:branch state))
+                                                                                @focused-entity)))}
+
+                {:name "undo last transaction"
+                 :available? (can-undo? state)
+                 :key-patterns [[#{:meta} :z]]
+                 :run! (fn [_subtree]
+                         (undo! state-atom))}
+
+                {:name "redo transaction"
+                 :available? (can-redo? state)
+                 :key-patterns [[#{:meta :shift} :z]]
+                 :run! (fn [_subtree]
+                         (redo! state-atom))}
+
+                {:name "toggle help"
+                 :available? true
+                 :key-patterns [[#{:control} :h]]
+                 :run! (fn [_subtree]
+                         (swap! state-atom update :show-help? not))}
+
+                {:name "toggle uncommitted changes"
+                 :available? true
+                 :key-patterns [[#{:control} :u]]
+                 :run! (fn [_subtree]
+                         (swap! state-atom update :show-uncommitted-changes? not))}
+
+                {:name "scroll to focus"
+                 :available? @focused-node-id
+                 :key-patterns [[#{:control} :l]]
+                 :run! (fn [_subtre]
+                         (let [focused-path (scene-graph/path-to scene-graph/current-scene-graph
+                                                                 @focused-node-id)
+                               scrolling-pane (medley/find-first #(= :scrolling-pane
+                                                                     (:local-id %))
+                                                                 focused-path)
+                               current-absolute-y (reduce + (map :y (remove #(= :scrolling-pane
+                                                                                (:local-id %))
+                                                                            focused-path)))
+                               middle-y (/ (:available-height scrolling-pane)
+                                           2)
+                               middle-scroll-y (+ middle-y
+                                                  (- current-absolute-y))]
+                           (swap! state-atom assoc :y (if (= (:y state)
+                                                             middle-scroll-y)
+                                                        (+ 20 (- current-absolute-y))
+                                                        middle-scroll-y))))}]}))
+
 (defn root-view [state-atom]
   #_(logga.core/write (pr-str 'event-cache
                               (cache/stats cache/state)))
@@ -3315,258 +3609,7 @@
                                                                                   -
                                                                                   (* 3 (:precise-wheel-rotation event))))
                                                                          event)
-                                                  :command-set {:name "root"
-                                                                :commands [{:name "toggle view cache misses highlighting"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:meta} :e]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (swap! application/application-loop-state-atom
-                                                                                           update :highlight-view-call-cache-misses? not))}
-                                                                           {:name "toggle viewing of entity ids"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:meta} :w]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (swap! application/state-atom
-                                                                                           update :show-entity-ids? not))}
-                                                                           {:name "descent focus"
-                                                                            :available? true
-                                                                            :key-patterns [[[#{:meta} :d]]
-                                                                                           #_[[#{:control} :e]]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (when-let [focusable-child (scene-graph/find-first-child :can-gain-focus?
-                                                                                                                                             (scene-graph/find-first #(= (-> @keyboard/state-atom :focused-node-id)
-                                                                                                                                                                         (:id %))
-                                                                                                                                                                     scene-graph/current-scene-graph))]
-                                                                                      (keyboard/set-focused-node! focusable-child)))}
-
-                                                                           {:name "ascent focus"
-                                                                            :available? true
-                                                                            :key-patterns [[[#{:meta} :a]]
-                                                                                           #_[[#{:control} :a]]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (when-let [focusable-ancestor (medley/find-first :can-gain-focus?
-                                                                                                                                     (rest (reverse (scene-graph/path-to scene-graph/current-scene-graph
-                                                                                                                                                                         (-> @keyboard/state-atom :focused-node-id)))))]
-                                                                                      (keyboard/set-focused-node! focusable-ancestor)))}
-
-                                                                           {:name "move focus left"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:control} :b]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
-                                                                                                          (partial scene-graph/closest-horizontal-nodes
-                                                                                                                   (keyboard/focused-node-id @keyboard/state-atom))
-                                                                                                          dec
-                                                                                                          keyboard/cycle-position))}
-
-                                                                           {:name "move focus right"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:control} :f]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
-                                                                                                          (partial scene-graph/closest-horizontal-nodes
-                                                                                                                   (keyboard/focused-node-id @keyboard/state-atom))
-                                                                                                          inc
-                                                                                                          keyboard/cycle-position))}
-
-                                                                           {:name "move focus down"
-                                                                            :available? true
-                                                                            :key-patterns [[[#{:control} :n]]
-                                                                                           #_[[#{:meta} :n]]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
-                                                                                                          (partial scene-graph/closest-vertical-nodes
-                                                                                                                   @focused-node-id)
-                                                                                                          inc
-                                                                                                          keyboard/cycle-position))}
-
-                                                                           {:name "move focus up"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:control} :p]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (keyboard/move-focus! scene-graph/current-scene-graph
-                                                                                                          (partial scene-graph/closest-vertical-nodes
-                                                                                                                   @focused-node-id)
-                                                                                                          dec
-                                                                                                          keyboard/cycle-position))}
-
-                                                                           {:name "move focus forward"
-                                                                            :available? true
-                                                                            :key-patterns [[#{} :tab]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
-                                                                                                          keyboard/order-nodes-down-right
-                                                                                                          inc
-                                                                                                          keyboard/cycle-position))}
-
-                                                                           {:name "move focus backward"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:shift} :tab]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
-                                                                                                          keyboard/order-nodes-down-right
-                                                                                                          dec
-                                                                                                          keyboard/cycle-position))}
-                                                                           {:name "quit"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:meta} :escape]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (application/send-event! {:type :close-requested}))}
-
-                                                                           {:name "move focus to prompt"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:meta} :o]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (focus-on-prompt (scene-graph/find-first-breath-first (fn [node]
-                                                                                                                                            (= root-view-node-id
-                                                                                                                                               (:id node)))
-                                                                                                                                          scene-graph/current-scene-graph)))}
-
-                                                                           {:name "open previous entity"
-                                                                            :available? (not (empty? (:previous-entities @state-atom)))
-                                                                            :key-patterns [[#{:meta} :comma]]
-                                                                            :run! (fn [subtree]
-                                                                                    (swap! state-atom (fn [state]
-                                                                                                        (-> state
-                                                                                                            (assoc :entity (:entity (last (:previous-entities state))))
-                                                                                                            (update :previous-entities drop-last))) )
-                                                                                    (when-let [node-id (:node-id (last (:previous-entities state)))]
-                                                                                      (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                                                                           (keyboard/set-focused-node! (scene-graph/find-first #(= node-id
-                                                                                                                                                                                   (:id %))
-                                                                                                                                                                               scene-graph))))))}
-
-                                                                           {:name "open focused entity"
-                                                                            :available? @focused-entity
-                                                                            :key-patterns [[#{:meta} :period]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (open-entity! state-atom
-                                                                                                  @focused-entity
-                                                                                                  {:node-id @keyboard/focused-node}))}
-
-                                                                           {:name "create supporting argument"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:control} :c] [#{:control} :a]]
-                                                                            :run! (fn [_subtree]
-
-                                                                                    (let [new-argument-id (-> (transact! (:branch state)
-                                                                                                                         [[:add
-                                                                                                                           :tmp/new-argument
-                                                                                                                           (prelude :type-attribute)
-                                                                                                                           (argumentation :argument)]
-
-                                                                                                                          [:add
-                                                                                                                           :tmp/new-argument
-                                                                                                                           (argumentation :supports)
-                                                                                                                           (:entity state)]])
-                                                                                                              :temporary-id-resolution
-                                                                                                              :tmp/new-argument)]
-
-                                                                                      (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                                                                           (->> scene-graph
-                                                                                                                                (scene-graph/find-first #(= new-argument-id
-                                                                                                                                                            (:local-id %)))
-                                                                                                                                (scene-graph/find-first-child :can-gain-focus?)
-                                                                                                                                (keyboard/set-focused-node!))))))}
-
-                                                                           {:name "commit changes"
-                                                                            :available? (not (empty? (branch-changes (:branch state))))
-                                                                            :key-patterns [[#{:meta} :s]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (transact! (:stream-db state)
-                                                                                               (->> (branch-changes (:branch state))
-                                                                                                    (map (partial stream-entity-ids-to-temporary-ids (:id (:branch state))))))
-                                                                                    (swap! state-atom assoc :branch (create-stream-db-branch "uncommitted" (db-common/deref (:stream-db state)))))}
-
-                                                                           {:name "delete focused entity"
-                                                                            :available? @focused-entity
-                                                                            :key-patterns [[#{:control} :c] [#{:control} :x]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (transact! (:branch state)
-                                                                                               (db-common/changes-to-remove-component-tree (db-common/deref (:branch state))
-                                                                                                                                           @focused-entity)))}
-
-                                                                           {:name "undo last transaction"
-                                                                            :available? (can-undo? state)
-                                                                            :key-patterns [[#{:meta} :z]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (undo! state-atom))}
-
-                                                                           {:name "redo transaction"
-                                                                            :available? (can-redo? state)
-                                                                            :key-patterns [[#{:meta :shift} :z]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (redo! state-atom))}
-
-                                                                           {:name "toggle help"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:control} :h]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (swap! state-atom update :show-help? not))}
-
-                                                                           {:name "toggle uncommitted changes"
-                                                                            :available? true
-                                                                            :key-patterns [[#{:control} :u]]
-                                                                            :run! (fn [_subtree]
-                                                                                    (swap! state-atom update :show-uncommitted-changes? not))}
-
-                                                                           {:name "scroll to focus"
-                                                                            :available? @focused-node-id
-                                                                            :key-patterns [[#{:control} :l]]
-                                                                            :run! (fn [_subtre]
-                                                                                    (let [focused-path (scene-graph/path-to scene-graph/current-scene-graph
-                                                                                                                            @focused-node-id)
-                                                                                          scrolling-pane (medley/find-first #(= :scrolling-pane
-                                                                                                                                (:local-id %))
-                                                                                                                            focused-path)
-                                                                                          current-absolute-y (reduce + (map :y (remove #(= :scrolling-pane
-                                                                                                                                           (:local-id %))
-                                                                                                                                       focused-path)))
-                                                                                          middle-y (/ (:available-height scrolling-pane)
-                                                                                                      2)
-                                                                                          middle-scroll-y (+ middle-y
-                                                                                                             (- current-absolute-y))]
-                                                                                      (swap! state-atom assoc :y (if (= (:y state)
-                                                                                                                        middle-scroll-y)
-                                                                                                                   (+ 20 (- current-absolute-y))
-                                                                                                                   middle-scroll-y))))}]})))])
-
-
-
-    ;; (->
-    ;;  (assoc :keyboard-event-handler (fn [scene-graph event]
-    ;;                                   (if (and (= :descent (:phase event))
-    ;;                                            (= :key-pressed (:type event)))
-    ;;                                     (if-let [focused-node-id (:focused-node-id @keyboard/state-atom)]
-    ;;                                       (let [key-pattern (keyboard-event-to-key-pattern event)]
-    ;;                                         (if-let [command-and-subtree (->> (scene-graph/path-to scene-graph
-    ;;                                                                                                focused-node-id)
-    ;;                                                                           (filter :command-set)
-    ;;                                                                           #_(map :command-set)
-    ;;                                                                           (mapcat (fn [_subtree]
-    ;;                                                                                     (for [command (:commands (:command-set _subtree))]
-    ;;                                                                                       {:subtree _subtree
-    ;;                                                                                        :command command})))
-    ;;                                                                           (medley/find-first (fn [command-and-subtree]
-    ;;                                                                                                (and (:available? (:command command-and-subtree))
-    ;;                                                                                                     (= key-pattern
-    ;;                                                                                                        (first (:key-patterns (:command command-and-subtree))))))))]
-    ;;                                           (do ((:run! (:command command-and-subtree))
-    ;;                                                (:subtree command-and-subtree))
-    ;;                                               nil)
-    ;;                                           event))
-    ;;                                       event)
-    ;;                                     event)
-
-
-    ;;                                   #_(if (and (= :descent (:phase event))
-    ;;                                              (= :key-pressed (:type event))
-    ;;                                              (= :n (:key event))
-    ;;                                              (:control? event))
-    ;;                                       (do (keyboard/cycle-focus scene-graph event)
-    ;;                                           nil)
-    ;;                                       event))))
-    ))
+                                                  :command-set (root-view-command-set state-atom))))])))
 
 ;; How to move focus to a new scene graph node?
 ;; - give scenegraph subtree as a aparameter to command handlers
@@ -4114,6 +4157,15 @@
         :z 0}
        (big-text "3")))
 
+
+(comment
+  (let [db (create-dependable-stream-db-in-memory "base" index-definitions)
+        temporary-id-resolution (:temporary-id-resolution (transact! db (mapcat map-to-transaction/map-to-statements
+                                                                                [{:dali/id         :tmp/lens
+                                                                                  (stred :editors) []}])))]
+    (db-common/values db (:tmp/lens temporary-id-resolution) (stred :editors)))
+  ) ;; TODO: remove me
+
 (defn table-demo []
   (let [db (create-dependable-stream-db-in-memory "base" index-definitions)
         temporary-id-resolution (:temporary-id-resolution (transact! db (concat (mapcat map-to-transaction/map-to-statements
@@ -4134,16 +4186,193 @@
                                                                                 stred-transaction
                                                                                 prelude-transaction)))
         state-atom (dependable-atom/atom "array-editor-state"
-                                         {})]
+                                         {})
+        root-view-state-atom (atom {})]
     #_(common/value db
                     (:tmp/system-1 temporary-id-resolution)
                     (prelude :label))
     (fn []
-      (hor 0 (array-editor-nodes state-atom
-                                 db
-                                 (:tmp/lens temporary-id-resolution)
-                                 (stred :editors)
-                                 )))))
+      [command-handler
+       #_true (:show-help? root-view-state-atom)
+       (let [entity (:tmp/system-1 temporary-id-resolution)
+             attribute (:tmp/depends-on temporary-id-resolution)
+             value-entities (common/values db entity attribute)
+             lens (:tmp/lens temporary-id-resolution)
+             table-view-id view-compiler/id]
+         (prn '(db-common/values db lens (stred :editors)) (db-common/values db lens (stred :editors))) ;; TODO: remove me
+
+         (assoc-last  :command-set (root-view-command-set root-view-state-atom)
+                      (layouts/grid (concat [(concat [(text "")]
+                                                     (array-editor-nodes state-atom
+                                                                         db
+                                                                         lens
+                                                                         (stred :editors)
+
+                                                                         (fn new-item-transaction [new-item]
+                                                                           {:item-id :tmp/new-editor
+                                                                            :transaction (if (:label new-item)
+                                                                                           (concat [[:add
+                                                                                                     :tmp/new-attribute
+                                                                                                     (prelude :type-attribute)
+                                                                                                     (prelude :attribute)]
+
+                                                                                                    [:add
+                                                                                                     :tmp/new-attribute
+                                                                                                     (prelude :label)
+                                                                                                     (:label new-item)]]
+                                                                                                   (when (:range new-item)
+                                                                                                     [[:add
+                                                                                                       :tmp/new-attribute
+                                                                                                       (prelude :range)
+                                                                                                       (:range new-item)]])
+                                                                                                   (map-to-transaction/map-to-statements {:dali/id :tmp/new-editor
+                                                                                                                                          (prelude :type-attribute) (stred :editor)
+                                                                                                                                          (stred :attribute) :tmp/new-attribute}))
+                                                                                           (do (println 'transacting (map-to-transaction/map-to-statements (merge {:dali/id :tmp/new-editor
+                                                                                                                                                                   (prelude :type-attribute) (stred :editor)
+                                                                                                                                                                   (stred :attribute) (:entity new-item)}
+                                                                                                                                                                  (when (:reverse? new-item)
+                                                                                                                                                                    {(stred :reverse?) true}))))
+                                                                                               (map-to-transaction/map-to-statements (merge {:dali/id :tmp/new-editor
+                                                                                                                                             (prelude :type-attribute) (stred :editor)
+                                                                                                                                             (stred :attribute) (:entity new-item)}
+                                                                                                                                            (when (:reverse? new-item)
+                                                                                                                                              {(stred :reverse?) true})))))})
+                                                                         (fn available-items [query-text]
+                                                                           (available-lens-editor-items query-text db lens value-entities))
+
+                                                                         (fn item-view [db editor]
+                                                                           (let [attribute (db-common/value db
+                                                                                                            editor
+                                                                                                            (stred :attribute))
+                                                                                 reverse? (db-common/value db
+                                                                                                           editor
+                                                                                                           (stred :reverse?))]
+                                                                             (text (str (when reverse?
+                                                                                          "<-")
+                                                                                        (label db attribute)))))
+
+                                                                         (starts-with? table-view-id
+                                                                                       @focused-node-id)
+
+                                                                         false
+
+                                                                         (fn item-removal-transaction [editor]
+                                                                           (common/changes-to-remove-component-tree (common/deref db)
+                                                                                                                    editor))
+                                                                         (fn item-commands [editor]
+                                                                           (let [range (db-common/value-in db
+                                                                                                           editor
+                                                                                                           [(stred :attribute)
+                                                                                                            (prelude :range)])
+                                                                                 reverse? (db-common/value db
+                                                                                                           editor
+                                                                                                           (stred :reverse?))]
+
+                                                                             [{:name "toggle reverse"
+                                                                               :available? (or (nil? range)
+                                                                                               (= range (prelude :entity)))
+                                                                               :key-patterns [[#{:control} :r]]
+                                                                               :run! (fn [_subtree]
+                                                                                       (transact! db [[:set editor (stred :reverse?) (not reverse?)]]))}]))))]
+                                            (for [value-entity value-entities]
+                                              (concat [(layouts/with-margins  10 10 10 10 (value-view db value-entity))]
+                                                      (for [editor (db-common/value db lens (stred :editors))]
+                                                        #_(text  (pr-str editor (db-common/value db editor (stred :attribute))) #_(db-common/values db
+                                                                                                                                                    value-entity
+                                                                                                                                                    (db-common/value db editor (stred :attribute))))
+                                                        #_(ver 0 (for [cell-value (db-common/values db
+                                                                                                    value-entity
+                                                                                                    (db-common/value db editor (stred :attribute)))]
+                                                                   (value-view db cell-value)))
+
+                                                        (let [attribute (db-common/value db
+                                                                                         editor
+                                                                                         (stred :attribute))
+                                                              reverse? (db-common/value db
+                                                                                        editor
+                                                                                        (stred :reverse?))
+                                                              lens-map (db-common/value db
+                                                                                        editor
+                                                                                        (stred :lens-map))
+                                                              shared-lens (db-common/value db
+                                                                                           editor
+                                                                                           (stred :value-lens))
+                                                              value (db-common/value db
+                                                                                     entity
+                                                                                     attribute)
+                                                              range (cond reverse?
+                                                                          (prelude :entity)
+
+                                                                          (vector? value)
+                                                                          (prelude :array)
+
+                                                                          (string? value)
+                                                                          (prelude :text)
+
+                                                                          (entity-id/entity-id? value)
+                                                                          (prelude :entity)
+
+                                                                          :else
+                                                                          (db-common/value db
+                                                                                           attribute
+                                                                                           (prelude :range)))
+
+                                                              entity-attribute-editor-call [entity-attribute-editor
+                                                                                            db
+                                                                                            value-entity
+                                                                                            attribute
+                                                                                            lens-map
+                                                                                            {:reverse? reverse?
+                                                                                             :shared-lens shared-lens
+                                                                                             :add-lens (fn [value]
+                                                                                                         ;; TODO: remove nonexisting values from lens map
+                                                                                                         (transact! db [[:set editor (stred :lens-map)
+                                                                                                                         (assoc lens-map value :tmp/new-lens)]]))}]]
+                                                          (layouts/with-margins  10 10 10 10
+                                                            (if range
+                                                              (condp = range
+                                                                (prelude :text)
+                                                                [text-attribute-editor
+                                                                 db
+                                                                 value-entity
+                                                                 (db-common/value db
+                                                                                  editor
+                                                                                  (stred :attribute))]
+
+                                                                (prelude :entity)
+                                                                entity-attribute-editor-call
+
+                                                                (prelude :type-type) ;; TODO make type-type a subtype of entity
+                                                                entity-attribute-editor-call
+
+                                                                (prelude :array)
+                                                                (ver 0
+                                                                     (text "[")
+                                                                     [entity-array-attribute-editor-2
+                                                                      db
+                                                                      value-entity
+                                                                      attribute
+                                                                      lens-map
+                                                                      {:shared-lens shared-lens
+                                                                       :add-lens (fn [value]
+                                                                                   (transact! db [[:set editor (stred :lens-map)
+                                                                                                   (assoc lens-map value :tmp/new-lens)]]))}]
+                                                                     (text "]"))
+
+                                                                (text (str (pr-str editor)
+                                                                           " "
+                                                                           (pr-str (db-common/value db
+                                                                                                    editor
+                                                                                                    (prelude :type-attribute))))))
+
+                                                              [empty-attribute-prompt
+                                                               db
+                                                               value-entity
+                                                               attribute
+                                                               reverse?]))))))))))])))
+
+
 
 (defn start []
   (println "\n\n------------ start -------------\n\n")
@@ -4157,6 +4386,7 @@
            ;; #'image-cache-test-root
            ;; adapt-to-space-test-root
            ;; #'dynamic-scope-demo
+           ;; #'table-demo
            :on-exit #(reset! event-channel-atom nil)))
 
   ;; (Thread/sleep 100)
