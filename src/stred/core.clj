@@ -82,9 +82,11 @@
                   :highlighted-text-color background-color
                   :symbol-background [0 70 0 255]
                   :highlighted-background-color (add-color background-color
-                                                           [0 0 100])
+                                                           [0 140 0])
+                  #_(add-color background-color
+                               [0 0 100])
                   :focus-highlight-color (add-color background-color
-                                                    [0 140 0])
+                                                    [0 100 0])
                   :menu-background (add-color background-color
                                               [50 50 50])}))
 
@@ -227,7 +229,7 @@
       (is (= '([:entity-1 :label "base label" 0 :add]
                [:entity-1 :label "branch label 1" 1 :add]
                [:entity-1 :label "branch label 2" 2 :add])
-             (-> branch :indexes :eav :collection))))
+            (-> branch :indexes :eav :collection))))
 
     (is (= ["base label"
             "branch label 1"
@@ -907,15 +909,11 @@
 
   event)
 
-(defn focus-highlight [_child]
-  (let [state-atom (dependable-atom/atom {})]
-    (fn [child]
-      (-> (highlight child
-                     {:fill-color (if (keyboard/sub-component-is-focused?)
-                                    #_(:focused? @state-atom)
-                                    (:focus-highlight-color theme)
-                                    (:background-color theme))})
-          #_(assoc :keyboard-event-handler [focus-highlight-keyboard-event-handler state-atom])))))
+(defn focus-highlight [child]
+  (highlight child
+             {:fill-color (if (keyboard/sub-component-is-focused?)
+                            (:focus-highlight-color theme)
+                            (:background-color theme))}))
 
 (defn on-click-mouse-event-handler [on-clicked node event]
   (when (= :mouse-clicked (:type event))
@@ -3242,6 +3240,14 @@
         change))
 
 
+(defn move-focus! [select-node]
+  (let [nodes (scene-graph/flatten scene-graph/current-scene-graph)]
+    (when-let [selected-node (select-node (scene-graph/find-by-id @focused-node-id
+                                                                  nodes)
+                                          (filter :can-gain-focus?
+                                                  nodes))]
+      (keyboard/move-focus-2! selected-node))))
+
 (defn root-view-command-set [state-atom]
   (let [state @state-atom]
     {:name "root"
@@ -3282,42 +3288,26 @@
                  :available? true
                  :key-patterns [[#{:control} :b]]
                  :run! (fn [_subtree]
-                         (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
-                                               (partial scene-graph/closest-horizontal-nodes
-                                                        (keyboard/focused-node-id @keyboard/state-atom))
-                                               dec
-                                               keyboard/cycle-position))}
+                         (move-focus! scene-graph/closest-node-left))}
 
                 {:name "move focus right"
                  :available? true
                  :key-patterns [[#{:control} :f]]
                  :run! (fn [_subtree]
-                         (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
-                                               (partial scene-graph/closest-horizontal-nodes
-                                                        (keyboard/focused-node-id @keyboard/state-atom))
-                                               inc
-                                               keyboard/cycle-position))}
+                         (move-focus! scene-graph/closest-node-right))}
 
                 {:name "move focus down"
                  :available? true
                  :key-patterns [[[#{:control} :n]]
                                 #_[[#{:meta} :n]]]
                  :run! (fn [_subtree]
-                         (keyboard/move-focus! (:scene-graph @keyboard/state-atom)
-                                               (partial scene-graph/closest-vertical-nodes
-                                                        @focused-node-id)
-                                               inc
-                                               keyboard/cycle-position))}
+                         (move-focus! scene-graph/closest-node-down))}
 
                 {:name "move focus up"
                  :available? true
                  :key-patterns [[#{:control} :p]]
                  :run! (fn [_subtree]
-                         (keyboard/move-focus! scene-graph/current-scene-graph
-                                               (partial scene-graph/closest-vertical-nodes
-                                                        @focused-node-id)
-                                               dec
-                                               keyboard/cycle-position))}
+                         (move-focus! scene-graph/closest-node-up))}
 
                 {:name "move focus forward"
                  :available? true
@@ -4010,7 +4000,7 @@
 
   )
 
-(defn notebook-ui []
+(defn notebook-ui-for-db [db]
   (let [state-atom (dependable-atom/atom "ui-state"
                                          (let [stream-db (merge-stream-dbs #_(create-dependable-stream-db-in-memory "base" index-definitions)
                                                                            (doto (create-dependable-stream-db-in-memory "base" index-definitions)
@@ -4019,17 +4009,7 @@
                                                                                                 stred-transaction
                                                                                                 prelude-transaction
                                                                                                 argumentation-schema-transaction)))
-                                                                           (create-stream-db-on-disk
-                                                                            ;; "stred"
-                                                                            ;; test-stream-path
-                                                                            ;; "health" "temp/health"
-                                                                            ;; "koe" "temp/koe3"
-                                                                            ;; "koe" "temp/koe4" ;; the switch
-                                                                            ;; "koe" "temp/koe5"
-                                                                            ;; "koe" "temp/koe6"
-                                                                            ;; "du" "temp/du"
-                                                                            "uoa" "temp/uses-of-argument"
-                                                                            index-definitions))
+                                                                           db)
 
                                                branch (create-stream-db-branch "uncommitted" (db-common/deref stream-db))
                                                entity {:id 0, :stream-id "base"}
@@ -4077,6 +4057,19 @@
                                   [component-2]
                                   #_[component-2]))
       (root-view state-atom))))
+
+(defn notebook-ui []
+  (notebook-ui-for-db (create-stream-db-on-disk
+                       ;; "stred"
+                       ;; test-stream-path
+                       ;; "health" "temp/health"
+                       ;; "koe" "temp/koe3"
+                       ;; "koe" "temp/koe4" ;; the switch
+                       ;; "koe" "temp/koe5"
+                       ;; "koe" "temp/koe6"
+                       ;; "du" "temp/du"
+                       "uoa" "temp/uses-of-argument"
+                       index-definitions)))
 
 
 (comment
@@ -4166,6 +4159,33 @@
     (db-common/values db (:tmp/lens temporary-id-resolution) (stred :editors)))
   ) ;; TODO: remove me
 
+(def table-view-command-set {:name "table"
+                             :commands [{:name "move focus left"
+                                         :available? true
+                                         :key-patterns [[#{:control} :b]]
+                                         :run! (fn [_subtree]
+                                               ;;  TODO: moving in table left from empty prompt to list of three entities does not work
+                                                 (move-focus! scene-graph/closest-node-directly-left))}
+
+                                        {:name "move focus right"
+                                         :available? true
+                                         :key-patterns [[#{:control} :f]]
+                                         :run! (fn [_subtree]
+                                                 (move-focus! scene-graph/closest-node-directly-right))}
+
+                                        {:name "move focus down"
+                                         :available? true
+                                         :key-patterns [[[#{:control} :n]]
+                                                        #_[[#{:meta} :n]]]
+                                         :run! (fn [_subtree]
+                                                 (move-focus! scene-graph/closest-node-directly-down))}
+
+                                        {:name "move focus up"
+                                         :available? true
+                                         :key-patterns [[#{:control} :p]]
+                                         :run! (fn [_subtree]
+                                                 (move-focus! scene-graph/closest-node-directly-up))}]})
+
 (defn table-demo []
   (let [db (create-dependable-stream-db-in-memory "base" index-definitions)
         temporary-id-resolution (:temporary-id-resolution (transact! db (concat (mapcat map-to-transaction/map-to-statements
@@ -4199,178 +4219,184 @@
              value-entities (common/values db entity attribute)
              lens (:tmp/lens temporary-id-resolution)
              table-view-id view-compiler/id]
-         (prn '(db-common/values db lens (stred :editors)) (db-common/values db lens (stred :editors))) ;; TODO: remove me
-
          (assoc-last  :command-set (root-view-command-set root-view-state-atom)
-                      (layouts/grid (concat [(concat [(text "")]
-                                                     (array-editor-nodes state-atom
-                                                                         db
-                                                                         lens
-                                                                         (stred :editors)
+                      (ver 0
+                           #_(text (pr-str @keyboard/focused-node-id-derivation))
+                           (assoc-last  :command-set table-view-command-set
+                                        (layouts/grid (concat [(concat [(text "")]
+                                                                       (array-editor-nodes state-atom
+                                                                                           db
+                                                                                           lens
+                                                                                           (stred :editors)
 
-                                                                         (fn new-item-transaction [new-item]
-                                                                           {:item-id :tmp/new-editor
-                                                                            :transaction (if (:label new-item)
-                                                                                           (concat [[:add
-                                                                                                     :tmp/new-attribute
-                                                                                                     (prelude :type-attribute)
-                                                                                                     (prelude :attribute)]
+                                                                                           (fn new-item-transaction [new-item]
+                                                                                             {:item-id :tmp/new-editor
+                                                                                              :transaction (if (:label new-item)
+                                                                                                             (concat [[:add
+                                                                                                                       :tmp/new-attribute
+                                                                                                                       (prelude :type-attribute)
+                                                                                                                       (prelude :attribute)]
 
-                                                                                                    [:add
-                                                                                                     :tmp/new-attribute
-                                                                                                     (prelude :label)
-                                                                                                     (:label new-item)]]
-                                                                                                   (when (:range new-item)
-                                                                                                     [[:add
-                                                                                                       :tmp/new-attribute
-                                                                                                       (prelude :range)
-                                                                                                       (:range new-item)]])
-                                                                                                   (map-to-transaction/map-to-statements {:dali/id :tmp/new-editor
-                                                                                                                                          (prelude :type-attribute) (stred :editor)
-                                                                                                                                          (stred :attribute) :tmp/new-attribute}))
-                                                                                           (do (println 'transacting (map-to-transaction/map-to-statements (merge {:dali/id :tmp/new-editor
-                                                                                                                                                                   (prelude :type-attribute) (stred :editor)
-                                                                                                                                                                   (stred :attribute) (:entity new-item)}
-                                                                                                                                                                  (when (:reverse? new-item)
-                                                                                                                                                                    {(stred :reverse?) true}))))
-                                                                                               (map-to-transaction/map-to-statements (merge {:dali/id :tmp/new-editor
-                                                                                                                                             (prelude :type-attribute) (stred :editor)
-                                                                                                                                             (stred :attribute) (:entity new-item)}
-                                                                                                                                            (when (:reverse? new-item)
-                                                                                                                                              {(stred :reverse?) true})))))})
-                                                                         (fn available-items [query-text]
-                                                                           (available-lens-editor-items query-text db lens value-entities))
+                                                                                                                      [:add
+                                                                                                                       :tmp/new-attribute
+                                                                                                                       (prelude :label)
+                                                                                                                       (:label new-item)]]
+                                                                                                                     (when (:range new-item)
+                                                                                                                       [[:add
+                                                                                                                         :tmp/new-attribute
+                                                                                                                         (prelude :range)
+                                                                                                                         (:range new-item)]])
+                                                                                                                     (map-to-transaction/map-to-statements {:dali/id :tmp/new-editor
+                                                                                                                                                            (prelude :type-attribute) (stred :editor)
+                                                                                                                                                            (stred :attribute) :tmp/new-attribute}))
+                                                                                                             (do (println 'transacting (map-to-transaction/map-to-statements (merge {:dali/id :tmp/new-editor
+                                                                                                                                                                                     (prelude :type-attribute) (stred :editor)
+                                                                                                                                                                                     (stred :attribute) (:entity new-item)}
+                                                                                                                                                                                    (when (:reverse? new-item)
+                                                                                                                                                                                      {(stred :reverse?) true}))))
+                                                                                                                 (map-to-transaction/map-to-statements (merge {:dali/id :tmp/new-editor
+                                                                                                                                                               (prelude :type-attribute) (stred :editor)
+                                                                                                                                                               (stred :attribute) (:entity new-item)}
+                                                                                                                                                              (when (:reverse? new-item)
+                                                                                                                                                                {(stred :reverse?) true})))))})
+                                                                                           (fn available-items [query-text]
+                                                                                             (available-lens-editor-items query-text db lens value-entities))
 
-                                                                         (fn item-view [db editor]
-                                                                           (let [attribute (db-common/value db
-                                                                                                            editor
-                                                                                                            (stred :attribute))
-                                                                                 reverse? (db-common/value db
+                                                                                           (fn item-view [db editor]
+                                                                                             (let [attribute (db-common/value db
+                                                                                                                              editor
+                                                                                                                              (stred :attribute))
+                                                                                                   reverse? (db-common/value db
+                                                                                                                             editor
+                                                                                                                             (stred :reverse?))]
+                                                                                               (text (str (when reverse?
+                                                                                                            "<-")
+                                                                                                          (label db attribute)))))
+
+                                                                                           (starts-with? table-view-id
+                                                                                                         @focused-node-id)
+
+                                                                                           false
+
+                                                                                           (fn item-removal-transaction [editor]
+                                                                                             (common/changes-to-remove-component-tree (common/deref db)
+                                                                                                                                      editor))
+                                                                                           (fn item-commands [editor]
+                                                                                             (let [range (db-common/value-in db
+                                                                                                                             editor
+                                                                                                                             [(stred :attribute)
+                                                                                                                              (prelude :range)])
+                                                                                                   reverse? (db-common/value db
+                                                                                                                             editor
+                                                                                                                             (stred :reverse?))]
+
+                                                                                               [{:name "toggle reverse"
+                                                                                                 :available? (or (nil? range)
+                                                                                                                 (= range (prelude :entity)))
+                                                                                                 :key-patterns [[#{:control} :r]]
+                                                                                                 :run! (fn [_subtree]
+                                                                                                         (transact! db [[:set editor (stred :reverse?) (not reverse?)]]))}]))))]
+                                                              (for [value-entity value-entities]
+                                                                (concat [(layouts/with-margins  10 10 10 10 (value-view db value-entity))]
+                                                                        (for [editor (db-common/value db lens (stred :editors))]
+                                                                          #_(text  (pr-str editor (db-common/value db editor (stred :attribute))) #_(db-common/values db
+                                                                                                                                                                      value-entity
+                                                                                                                                                                      (db-common/value db editor (stred :attribute))))
+                                                                          #_(ver 0 (for [cell-value (db-common/values db
+                                                                                                                      value-entity
+                                                                                                                      (db-common/value db editor (stred :attribute)))]
+                                                                                     (value-view db cell-value)))
+
+                                                                          (let [attribute (db-common/value db
                                                                                                            editor
-                                                                                                           (stred :reverse?))]
-                                                                             (text (str (when reverse?
-                                                                                          "<-")
-                                                                                        (label db attribute)))))
+                                                                                                           (stred :attribute))
+                                                                                reverse? (db-common/value db
+                                                                                                          editor
+                                                                                                          (stred :reverse?))
+                                                                                lens-map (db-common/value db
+                                                                                                          editor
+                                                                                                          (stred :lens-map))
+                                                                                shared-lens (db-common/value db
+                                                                                                             editor
+                                                                                                             (stred :value-lens))
+                                                                                value (db-common/value db
+                                                                                                       entity
+                                                                                                       attribute)
+                                                                                range (cond reverse?
+                                                                                            (prelude :entity)
 
-                                                                         (starts-with? table-view-id
-                                                                                       @focused-node-id)
+                                                                                            (vector? value)
+                                                                                            (prelude :array)
 
-                                                                         false
+                                                                                            (string? value)
+                                                                                            (prelude :text)
 
-                                                                         (fn item-removal-transaction [editor]
-                                                                           (common/changes-to-remove-component-tree (common/deref db)
-                                                                                                                    editor))
-                                                                         (fn item-commands [editor]
-                                                                           (let [range (db-common/value-in db
-                                                                                                           editor
-                                                                                                           [(stred :attribute)
-                                                                                                            (prelude :range)])
-                                                                                 reverse? (db-common/value db
-                                                                                                           editor
-                                                                                                           (stred :reverse?))]
+                                                                                            (entity-id/entity-id? value)
+                                                                                            (prelude :entity)
 
-                                                                             [{:name "toggle reverse"
-                                                                               :available? (or (nil? range)
-                                                                                               (= range (prelude :entity)))
-                                                                               :key-patterns [[#{:control} :r]]
-                                                                               :run! (fn [_subtree]
-                                                                                       (transact! db [[:set editor (stred :reverse?) (not reverse?)]]))}]))))]
-                                            (for [value-entity value-entities]
-                                              (concat [(layouts/with-margins  10 10 10 10 (value-view db value-entity))]
-                                                      (for [editor (db-common/value db lens (stred :editors))]
-                                                        #_(text  (pr-str editor (db-common/value db editor (stred :attribute))) #_(db-common/values db
-                                                                                                                                                    value-entity
-                                                                                                                                                    (db-common/value db editor (stred :attribute))))
-                                                        #_(ver 0 (for [cell-value (db-common/values db
-                                                                                                    value-entity
-                                                                                                    (db-common/value db editor (stred :attribute)))]
-                                                                   (value-view db cell-value)))
+                                                                                            :else
+                                                                                            (db-common/value db
+                                                                                                             attribute
+                                                                                                             (prelude :range)))
 
-                                                        (let [attribute (db-common/value db
-                                                                                         editor
-                                                                                         (stred :attribute))
-                                                              reverse? (db-common/value db
-                                                                                        editor
-                                                                                        (stred :reverse?))
-                                                              lens-map (db-common/value db
-                                                                                        editor
-                                                                                        (stred :lens-map))
-                                                              shared-lens (db-common/value db
-                                                                                           editor
-                                                                                           (stred :value-lens))
-                                                              value (db-common/value db
-                                                                                     entity
-                                                                                     attribute)
-                                                              range (cond reverse?
-                                                                          (prelude :entity)
+                                                                                entity-attribute-editor-call [entity-attribute-editor
+                                                                                                              db
+                                                                                                              value-entity
+                                                                                                              attribute
+                                                                                                              lens-map
+                                                                                                              {:reverse? reverse?
+                                                                                                               :shared-lens shared-lens
+                                                                                                               :add-lens (fn [value]
+                                                                                                                           ;; TODO: remove nonexisting values from lens map
+                                                                                                                           (transact! db [[:set editor (stred :lens-map)
+                                                                                                                                           (assoc lens-map value :tmp/new-lens)]]))}]]
 
-                                                                          (vector? value)
-                                                                          (prelude :array)
+                                                                            {:can-gain-focus? true
+                                                                             :view-call [focus-highlight
+                                                                                         (assoc-last :local-id :with-margins
+                                                                                                     (layouts/with-margins  10 10 10 10
+                                                                                                       (if range
+                                                                                                         (condp = range
+                                                                                                           (prelude :text)
+                                                                                                           [text-attribute-editor
+                                                                                                            db
+                                                                                                            value-entity
+                                                                                                            (db-common/value db
+                                                                                                                             editor
+                                                                                                                             (stred :attribute))]
 
-                                                                          (string? value)
-                                                                          (prelude :text)
+                                                                                                           (prelude :entity)
+                                                                                                           entity-attribute-editor-call
 
-                                                                          (entity-id/entity-id? value)
-                                                                          (prelude :entity)
+                                                                                                           (prelude :type-type) ;; TODO make type-type a subtype of entity
+                                                                                                           entity-attribute-editor-call
 
-                                                                          :else
-                                                                          (db-common/value db
-                                                                                           attribute
-                                                                                           (prelude :range)))
+                                                                                                           (prelude :array)
+                                                                                                           (ver 0
+                                                                                                                (text "[")
+                                                                                                                [entity-array-attribute-editor-2
+                                                                                                                 db
+                                                                                                                 value-entity
+                                                                                                                 attribute
+                                                                                                                 lens-map
+                                                                                                                 {:shared-lens shared-lens
+                                                                                                                  :add-lens (fn [value]
+                                                                                                                              (transact! db [[:set editor (stred :lens-map)
+                                                                                                                                              (assoc lens-map value :tmp/new-lens)]]))}]
+                                                                                                                (text "]"))
 
-                                                              entity-attribute-editor-call [entity-attribute-editor
-                                                                                            db
-                                                                                            value-entity
-                                                                                            attribute
-                                                                                            lens-map
-                                                                                            {:reverse? reverse?
-                                                                                             :shared-lens shared-lens
-                                                                                             :add-lens (fn [value]
-                                                                                                         ;; TODO: remove nonexisting values from lens map
-                                                                                                         (transact! db [[:set editor (stred :lens-map)
-                                                                                                                         (assoc lens-map value :tmp/new-lens)]]))}]]
-                                                          (layouts/with-margins  10 10 10 10
-                                                            (if range
-                                                              (condp = range
-                                                                (prelude :text)
-                                                                [text-attribute-editor
-                                                                 db
-                                                                 value-entity
-                                                                 (db-common/value db
-                                                                                  editor
-                                                                                  (stred :attribute))]
+                                                                                                           (text (str (pr-str editor)
+                                                                                                                      " "
+                                                                                                                      (pr-str (db-common/value db
+                                                                                                                                               editor
+                                                                                                                                               (prelude :type-attribute))))))
 
-                                                                (prelude :entity)
-                                                                entity-attribute-editor-call
-
-                                                                (prelude :type-type) ;; TODO make type-type a subtype of entity
-                                                                entity-attribute-editor-call
-
-                                                                (prelude :array)
-                                                                (ver 0
-                                                                     (text "[")
-                                                                     [entity-array-attribute-editor-2
-                                                                      db
-                                                                      value-entity
-                                                                      attribute
-                                                                      lens-map
-                                                                      {:shared-lens shared-lens
-                                                                       :add-lens (fn [value]
-                                                                                   (transact! db [[:set editor (stred :lens-map)
-                                                                                                   (assoc lens-map value :tmp/new-lens)]]))}]
-                                                                     (text "]"))
-
-                                                                (text (str (pr-str editor)
-                                                                           " "
-                                                                           (pr-str (db-common/value db
-                                                                                                    editor
-                                                                                                    (prelude :type-attribute))))))
-
-                                                              [empty-attribute-prompt
-                                                               db
-                                                               value-entity
-                                                               attribute
-                                                               reverse?]))))))))))])))
+                                                                                                         [empty-attribute-prompt
+                                                                                                          db
+                                                                                                          value-entity
+                                                                                                          attribute
+                                                                                                          reverse?])))]}
+                                                                            ))))))))))])))
 
 
 
@@ -4379,14 +4405,14 @@
   (reset! event-channel-atom
           (application/start-application ;; ui
            ;; #'grid-demo
-           #'notebook-ui
+           ;; notebook-ui
            ;; #'z-order-demo
            ;; #'split-demo
            ;; #'performance-test-root
            ;; #'image-cache-test-root
            ;; adapt-to-space-test-root
            ;; #'dynamic-scope-demo
-           ;; #'table-demo
+           #'table-demo
            :on-exit #(reset! event-channel-atom nil)))
 
   ;; (Thread/sleep 100)
