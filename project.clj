@@ -6,7 +6,8 @@
   :dependencies [[org.clojure/clojure "1.11.1"]
                  [flow-gl "1.0.0-SNAPSHOT"]
                  [dali "0.1.0-SNAPSHOT"]
-                 [com.clojure-goes-fast/clj-async-profiler "1.0.4"]]
+                 [com.clojure-goes-fast/clj-async-profiler "1.0.4"]
+                 [vvvvalvalval/scope-capture "0.3.3"]]
   :repl-options {:init-ns stred.core}
   :jvm-opts ["-Djdk.attach.allowAttachSelf" ;; for clj-async-profiler
              "-XX:-OmitStackTraceInFastThrow"])
