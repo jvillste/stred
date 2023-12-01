@@ -44,3 +44,22 @@ a value in an editor can be closed or open. When it's closed, it's editors are h
 
 
 when should a lens be added to a lens map?
+
+
+## node view
+
+- notebook
+  - node view
+    - lens
+    - table lens
+      - entity attribute editor
+        - lens map
+          - node view
+
+
+- notebook
+    - outline-view
+        - lens
+        - table-view
+            - lens map
+            - outline-view
