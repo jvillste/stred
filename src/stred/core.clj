@@ -3263,12 +3263,14 @@
         change))
 
 
-(defn move-focus! [select-node]
+(defn move-focus! [& select-node-functions]
   (let [nodes (scene-graph/flatten scene-graph/current-scene-graph)]
-    (when-let [selected-node (select-node (scene-graph/find-by-id @focused-node-id
-                                                                  nodes)
-                                          (filter :can-gain-focus?
-                                                  nodes))]
+    (when-let [selected-node (some (fn [select-node]
+                                     (select-node (scene-graph/find-by-id @focused-node-id
+                                                                          nodes)
+                                                  (filter :can-gain-focus?
+                                                          nodes)))
+                                   select-node-functions)]
       (keyboard/move-focus-2! selected-node))))
 
 (defn root-view-command-set [state-atom]
@@ -4188,26 +4190,30 @@
                                          :key-patterns [[#{:control} :b]]
                                          :run! (fn [_subtree]
                                                ;;  TODO: moving in table left from empty prompt to list of three entities does not work
-                                                 (move-focus! scene-graph/closest-node-directly-left))}
+                                                 (move-focus! scene-graph/closest-node-directly-left
+                                                              scene-graph/closest-node-left))}
 
                                         {:name "move focus right"
                                          :available? true
                                          :key-patterns [[#{:control} :f]]
                                          :run! (fn [_subtree]
-                                                 (move-focus! scene-graph/closest-node-directly-right))}
+                                                 (move-focus! scene-graph/closest-node-directly-right
+                                                              scene-graph/closest-node-right))}
 
                                       {:name "move focus down"
                                          :available? true
                                          :key-patterns [[[#{:control} :n]]
                                                         #_[[#{:meta} :n]]]
                                          :run! (fn [_subtree]
-                                                 (move-focus! scene-graph/closest-node-directly-down))}
+                                                 (move-focus! scene-graph/closest-node-directly-down
+                                                              scene-graph/closest-node-down))}
 
                                         {:name "move focus up"
                                          :available? true
                                          :key-patterns [[#{:control} :p]]
                                          :run! (fn [_subtree]
-                                                 (move-focus! scene-graph/closest-node-directly-up))}]})
+                                                 (move-focus! scene-graph/closest-node-directly-up
+                                                              scene-graph/closest-node-up))}]})
 
 ;; TODO: take common parts from entity-attribute-editor and entity-array-attribute-editor and put them to table view or put table view into them so that table columns can be added to entity-attribute-editor when ever needed
 ;; table view grid should be possible to apply to any list of entities coming for example forom a datalog query execution
