@@ -229,7 +229,7 @@
       (is (= '([:entity-1 :label "base label" 0 :add]
                [:entity-1 :label "branch label 1" 1 :add]
                [:entity-1 :label "branch label 2" 2 :add])
-            (-> branch :indexes :eav :collection))))
+             (-> branch :indexes :eav :collection))))
 
     (is (= ["base label"
             "branch label 1"
@@ -898,7 +898,7 @@
   (swap! state-atom (partial open-entity entity-id node-id)))
 
 (defn focus-highlight-keyboard-event-handler [state-atom _subtree event]
-  (cond (and (= :descent (:phase event))
+  (cond (and (= :descent (:phon-targetase event))
              (= :focus-gained (:type event)))
         (swap! state-atom assoc :focused? true)
 
@@ -1301,7 +1301,7 @@
 
 
 ;; (defn prompt-keyboard-event-handler [state-atom _subtree event]
-;;   (cond (and (= :descent (:phase event))
+;;   (cond (and (= :descent (on-target:phase event))
 ;;              (= :focus-gained (:type event)))
 ;;         (swap! state-atom assoc :focused? true)
 
@@ -2130,7 +2130,6 @@
                                                          {:add-lens (fn []
                                                                       (add-lens value-entity))}]
                                                {:mouse-event-handler [focus-on-click-mouse-event-handler]
-                                                :can-gain-focus? true
                                                 :local-id [:value index]
                                                 :entity value-entity
                                                 :keyboard-event-handler [entity-array-attribute-editor-value-view-keyboard-event-handler
@@ -2231,13 +2230,13 @@
   (let [existing-attributes-set (->> (mapcat #(common/entity-attributes db %)
                                              entities)
                                      (remove (fn [attribute]
-                                                 (= "stred" (:stream-id attribute))))
+                                               (= "stred" (:stream-id attribute))))
                                      (set))
         existing-reverse-attributes-set (->> (mapcat #(concat (common/reverse-entity-attributes db %)
                                                               (common/entity-sequence-reference-attributes db %))
                                                      entities)
                                              (remove (fn [attribute]
-                                                         (= "stred" (:stream-id attribute))))
+                                                       (= "stred" (:stream-id attribute))))
                                              (set))
         all-existing-attributes (set/union existing-attributes-set
                                            existing-reverse-attributes-set)
@@ -2309,6 +2308,7 @@
     (fn [db entity lens & [{:keys [add-lens]}]]
       (let [outline-view-id view-compiler/id]
         (assoc-last :entity entity
+                    :can-gain-focus? true
                     :command-set {:name "outline view"
                                   :commands [{:name "show prompt"
                                               :available? (not (:show-empty-prompt? @state-atom))
@@ -2627,7 +2627,7 @@
        (for [command-set command-sets]
          (ver 0
               (text (:name command-set)
-                      {:font bold-font})
+                    {:font bold-font})
               (for [command (filter (fn [command]
                                       (and (string/includes? (:name command)
                                                              query-text)
@@ -3472,6 +3472,11 @@
                                                         (+ 20 (- current-absolute-y))
                                                         middle-scroll-y))))}]}))
 
+(comment
+  (scene-graph/path-to the-current-scene-graph
+                       the-focused-node-id)
+  ) ;; TODO: remove me
+
 (defn root-view [state-atom]
   #_(logga.core/write (pr-str 'event-cache
                               (cache/stats cache/state)))
@@ -3487,12 +3492,11 @@
                                        (:y state)
                                        (-> (ver 10
                                                 ;; (text (pr-str (:entity state)))
-
                                                 (assoc-last :local-id :center-prompt-horizontally
-                                                            (layouts/center-horizontally
+                                                              (layouts/center-horizontally
 
-                                                             ^{:local-id :prompt}
-                                                             [top-prompt (:branch state) state-atom]))
+                                                               ^{:local-id :prompt}
+                                                               [top-prompt (:branch state) state-atom]))
 
                                                 (when (:entity state)
                                                   (let [entity-type (db-common/value (:branch state)
@@ -3888,9 +3892,9 @@
                                                                  :tmp/new-statement
                                                                  (prelude :type-attribute)
                                                                  (argumentation :statement)][:add
-                                                                                             :tmp/new-statement
-                                                                                             (prelude :label)
-                                                                                             1]])
+                                                                 :tmp/new-statement
+                                                                 (prelude :label)
+                                                                 1]])
                                                               :temporary-id-resolution
                                                               :tmp/new-statement)]
                                                {:stream-db stream-db
@@ -4322,13 +4326,13 @@
 
 
 (defn- table-view-header-row [page-size value-entities state column-array-editor-state-atom db table-lens reverse? attribute show-empty-column-prompt?]
-  [(concat [#_(text (pr-str (:selected-index state)))
-            (if (< page-size (count value-entities))
-              (text (str (inc (:page state))
-                         "/"
-                         (int (Math/ceil (/ (count value-entities)
-                                            page-size)))))
-              (text ""))]
+  [(concat [(text (pr-str (:selected-index state)))
+            #_(if (< page-size (count value-entities))
+                (text (str (inc (:page state))
+                           "/"
+                           (int (Math/ceil (/ (count value-entities)
+                                              page-size)))))
+                (text ""))]
            (array-editor-nodes column-array-editor-state-atom
                                db
                                table-lens
@@ -4452,26 +4456,37 @@
                                        (focus-on-new-entity new-value-entity)
                                        (swap! state-atom assoc :adding? false)))}])))]})
 
-;; TODO: selected-index does not always get cleared when focus moves out, maybe after some scenegraph changes?
+(defn table-view-row-value-cell-keyboard-event-handler [state-atom index _subtree event]
+  (cond (and (= :descent (:phase event))
+             (= 1 (:target-depth event))
+             (= :focus-gained (:type event)))
+        (swap! state-atom assoc :selected-index index)
+
+
+        (and (= :descent (:phase event))
+             (= 1 (:target-depth event))
+             (= :focus-lost (:type event)))
+        (swap! state-atom dissoc :selected-index))
+
+  event)
 
 (defn- table-view-value-row [index state db value-entity lens-map shared-lens add-lens state-atom entity attribute reverse? table-lens]
   (concat [(highlight-2 (= index (:selected-index state))
-                        (with-meta [outline-view
-                                    db
-                                    value-entity
-                                    (or (get lens-map
-                                             value-entity)
-                                        shared-lens)
-                                    {:add-lens (fn []
-                                                 (add-lens value-entity))}]
-                          {:mouse-event-handler [focus-on-click-mouse-event-handler]
-                           :command-set table-cell-command-set
-                           :can-gain-focus? true
-                           :local-id [:value index]
-                           :entity value-entity
-                           :keyboard-event-handler [entity-array-attribute-editor-value-view-keyboard-event-handler
-                                                    state-atom
-                                                    index]}))]
+                        {:mouse-event-handler [focus-on-click-mouse-event-handler]
+                         :command-set table-cell-command-set
+                         :local-id [:value index]
+                         :entity value-entity
+                         :keyboard-event-handler [table-view-row-value-cell-keyboard-event-handler
+                                                  state-atom
+                                                  index]
+                         :node (layouts/wrap [outline-view
+                                              db
+                                              value-entity
+                                              (or (get lens-map
+                                                       value-entity)
+                                                  shared-lens)
+                                              {:add-lens (fn []
+                                                           (add-lens value-entity))}])})]
           (for [editor (db-common/value db table-lens (stred :editors))]
             #_(text  (pr-str editor (db-common/value db editor (stred :attribute))) #_(db-common/values db
                                                                                                         value-entity
@@ -4654,7 +4669,7 @@
   (reset! event-channel-atom
           (application/start-application ;; ui
            ;; #'grid-demo
-           notebook-ui
+           #'notebook-ui
            ;; #'z-order-demo
            ;; #'split-demo
            ;; #'performance-test-root
