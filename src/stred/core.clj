@@ -4325,14 +4325,9 @@
                                                                    (keyboard/set-focused-node!)))))}]}))
 
 
-(defn- table-view-header-row [page-size value-entities state column-array-editor-state-atom db table-lens reverse? attribute show-empty-column-prompt?]
-  [(concat [(text (pr-str (:selected-index state)))
-            #_(if (< page-size (count value-entities))
-                (text (str (inc (:page state))
-                           "/"
-                           (int (Math/ceil (/ (count value-entities)
-                                              page-size)))))
-                (text ""))]
+(defn- table-view-header-row [value-entities column-array-editor-state-atom db table-lens show-empty-column-prompt?]
+  [(concat [(text "")
+            #_(text (pr-str (:selected-index state)))]
            (array-editor-nodes column-array-editor-state-atom
                                db
                                table-lens
@@ -4401,6 +4396,12 @@
                                      :key-patterns [[#{:control} :r]]
                                      :run! (fn [_subtree]
                                              (transact! db [[:set editor (stred :reverse?) (not reverse?)]]))}]))))])
+
+(defn- value-entities [reverse? db attribute entity]
+  (if reverse?
+    (concat (common/entities db attribute entity)
+            (common/entities-referring-with-sequence db entity))
+    (common/values db entity attribute)))
 
 (defn- table-view-row-prompt  [value-entities state-atom table-view-node-id db reverse? attribute entity]
   {:local-id :adding-prompt
@@ -4586,14 +4587,11 @@
                                       reverse?]))}))))
 
 (defn table-view [_db _entity _attribute _lens-map & _options]
-  (let [column-array-editor-state-atom (dependable-atom/atom "array-editor-state"
+  (let [column-array-editor-state-atom (dependable-atom/atom "column-array-editor-state"
                                                              {})
         state-atom (dependable-atom/atom {:page 0})]
     (fn [db entity attribute lens-map & [{:keys [reverse? add-lens shared-lens table-lens]}]]
-      (let [value-entities (sort-entity-ids (if reverse?
-                                              (concat (common/entities db attribute entity)
-                                                      (common/entities-referring-with-sequence db entity))
-                                              (common/values db entity attribute)))
+      (let [value-entities (sort-entity-ids (value-entities reverse? db attribute entity))
             table-view-node-id view-compiler/id
             state @state-atom
             page-size 30]
@@ -4604,7 +4602,7 @@
                                                          (not (empty? (db-common/value db
                                                                                        table-lens
                                                                                        (stred :editors)))))
-                                                 (table-view-header-row page-size value-entities state column-array-editor-state-atom db table-lens reverse? attribute (:show-empty-column-prompt? state)))
+                                                 (table-view-header-row value-entities column-array-editor-state-atom db table-lens (:show-empty-column-prompt? state)))
                                                (when (or (empty? value-entities)
                                                          (:adding? @state-atom))
                                                  [[(table-view-row-prompt value-entities state-atom table-view-node-id db reverse? attribute entity)]])
