@@ -42,7 +42,8 @@
    [flow-gl.tools.trace :as trace]
    [clojure.walk :as walk]
    [argumentica.db.common :as common]
-   [stred.hierarchical-table :as hierarchical-table]))
+   [stred.hierarchical-table :as hierarchical-table]
+   [stred.dev :as dev]))
 
 
 (defn assoc-last [& arguments]
@@ -811,14 +812,16 @@
                   color
                   font))
 
-(defn box [content & [{:keys [fill-color draw-color line-width] :or {fill-color (:background-color theme)
-                                                                     draw-color (:background-color theme)
-                                                                     line-width 2}}]]
-  (layouts/box 2
+(defn box [content & [{:keys [padding fill-color draw-color line-width corner-arc-radius] :or {fill-color (:background-color theme)
+                                                                                               draw-color (:background-color theme)
+                                                                                               line-width 2
+                                                                                               padding 2
+                                                                                               corner-arc-radius 5}}]]
+  (layouts/box padding
                (visuals/rectangle-2 :fill-color fill-color
                                     :draw-color draw-color
                                     :line-width line-width
-                                    :corner-arc-radius 5)
+                                    :corner-arc-radius corner-arc-radius)
                content))
 
 (defn entities [db attribute value]
@@ -3913,8 +3916,6 @@
       (root-view state-atom)))
   )
 
-(defonce event-channel-atom (atom nil))
-
 #_(defn start []
     (reset! event-channel-atom
             (application/start-window #_adapt-to-space-test-root
@@ -4400,108 +4401,108 @@
                                              (transact! db [[:set editor (stred :reverse?) (not reverse?)]]))}]))))])
 
 
-(defn- hierarchical-table-view-header-row [current-level-value-entities column-array-editor-state-atom db table-lens reverse? attribute show-empty-column-prompt?]
-  [(concat [(text "")]
-           (array-editor-nodes column-array-editor-state-atom
-                               db
-                               table-lens
-                               (stred :editors)
+;; (defn- hierarchical-table-view-header-row [current-level-value-entities column-array-editor-state-atom db table-lens reverse? attribute show-empty-column-prompt?]
+;;   [(concat [(text "")]
+;;            (array-editor-nodes column-array-editor-state-atom
+;;                                db
+;;                                table-lens
+;;                                (stred :editors)
 
-                               (fn new-item-transaction [new-item]
-                                 {:item-id :tmp/new-editor
-                                  :transaction (if (:label new-item)
-                                                 (concat [[:add
-                                                           :tmp/new-attribute
-                                                           (prelude :type-attribute)
-                                                           (prelude :attribute)]
+;;                                (fn new-item-transaction [new-item]
+;;                                  {:item-id :tmp/new-editor
+;;                                   :transaction (if (:label new-item)
+;;                                                  (concat [[:add
+;;                                                            :tmp/new-attribute
+;;                                                            (prelude :type-attribute)
+;;                                                            (prelude :attribute)]
 
-                                                          [:add
-                                                           :tmp/new-attribute
-                                                           (prelude :label)
-                                                           (:label new-item)]]
-                                                         (when (:range new-item)
-                                                           [[:add
-                                                             :tmp/new-attribute
-                                                             (prelude :range)
-                                                             (:range new-item)]])
-                                                         (map-to-transaction/map-to-statements {:dali/id :tmp/new-editor
-                                                                                                (prelude :type-attribute) (stred :editor)
-                                                                                                (stred :attribute) :tmp/new-attribute}))
-                                                 (map-to-transaction/map-to-statements (merge {:dali/id :tmp/new-editor
-                                                                                               (prelude :type-attribute) (stred :editor)
-                                                                                               (stred :attribute) (:entity new-item)}
-                                                                                              (when (:reverse? new-item)
-                                                                                                {(stred :reverse?) true}))))})
-                               (fn available-items [query-text]
-                                 (available-lens-editor-items query-text db table-lens current-level-value-entities))
+;;                                                           [:add
+;;                                                            :tmp/new-attribute
+;;                                                            (prelude :label)
+;;                                                            (:label new-item)]]
+;;                                                          (when (:range new-item)
+;;                                                            [[:add
+;;                                                              :tmp/new-attribute
+;;                                                              (prelude :range)
+;;                                                              (:range new-item)]])
+;;                                                          (map-to-transaction/map-to-statements {:dali/id :tmp/new-editor
+;;                                                                                                 (prelude :type-attribute) (stred :editor)
+;;                                                                                                 (stred :attribute) :tmp/new-attribute}))
+;;                                                  (map-to-transaction/map-to-statements (merge {:dali/id :tmp/new-editor
+;;                                                                                                (prelude :type-attribute) (stred :editor)
+;;                                                                                                (stred :attribute) (:entity new-item)}
+;;                                                                                               (when (:reverse? new-item)
+;;                                                                                                 {(stred :reverse?) true}))))})
+;;                                (fn available-items [query-text]
+;;                                  (available-lens-editor-items query-text db table-lens current-level-value-entities))
 
-                               (fn item-view [db editor]
-                                 (let [attribute (db-common/value db
-                                                                  editor
-                                                                  (stred :attribute))
-                                       reverse? (db-common/value db
-                                                                 editor
-                                                                 (stred :reverse?))
-                                       sub-editors (db-common/value db
-                                                                    editor
-                                                                    (stred :editors))
-                                       show-empty-sub-column-prompt? (= editor
-                                                                        (:show-empty-prompt-for-editor @column-array-editor-state-atom))]
-                                   {:command-set {:name "table header cell"
-                                                  :commands [{:name "toggle sub column prompt"
-                                                              :available? true
-                                                              :key-patterns [[#{:control} :s]]
-                                                              :run! (fn [_subtree]
-                                                                      (swap! column-array-editor-state-atom
-                                                                             update
-                                                                             :show-empty-prompt-for-editor
-                                                                             (fn [show-empty-prompt-for-editor]
-                                                                               (if (= show-empty-prompt-for-editor
-                                                                                      editor)
-                                                                                 nil
-                                                                                 editor)))
-                                                                      (swap! column-array-editor-state-atom
-                                                                             update
-                                                                             :sub-column-array-editor-states
-                                                                             (fn [column-array-editor-state]
-                                                                               ())))}]}
-                                    :node (let [header (text (str (when reverse?
-                                                                    "<-")
-                                                                  (label db attribute)))]
-                                            (if (or (not (empty? sub-editors))
-                                                    show-empty-sub-column-prompt?)
-                                              (ver 3
-                                                   (table-view-header-row (mapcat (fn [value-entity]
-                                                                                    (value-entities reverse? db attribute value-entity))
-                                                                                  (take 10 current-level-value-entities)) ;; TODO create index to look up possible attributes
-                                                                          column-array-editor-state-atom db table-lens reverse? attribute show-empty-sub-column-prompt?)
-                                                   header)
-                                              header))}))
+;;                                (fn item-view [db editor]
+;;                                  (let [attribute (db-common/value db
+;;                                                                   editor
+;;                                                                   (stred :attribute))
+;;                                        reverse? (db-common/value db
+;;                                                                  editor
+;;                                                                  (stred :reverse?))
+;;                                        sub-editors (db-common/value db
+;;                                                                     editor
+;;                                                                     (stred :editors))
+;;                                        show-empty-sub-column-prompt? (= editor
+;;                                                                         (:show-empty-prompt-for-editor @column-array-editor-state-atom))]
+;;                                    {:command-set {:name "table header cell"
+;;                                                   :commands [{:name "toggle sub column prompt"
+;;                                                               :available? true
+;;                                                               :key-patterns [[#{:control} :s]]
+;;                                                               :run! (fn [_subtree]
+;;                                                                       (swap! column-array-editor-state-atom
+;;                                                                              update
+;;                                                                              :show-empty-prompt-for-editor
+;;                                                                              (fn [show-empty-prompt-for-editor]
+;;                                                                                (if (= show-empty-prompt-for-editor
+;;                                                                                       editor)
+;;                                                                                  nil
+;;                                                                                  editor)))
+;;                                                                       (swap! column-array-editor-state-atom
+;;                                                                              update
+;;                                                                              :sub-column-array-editor-states
+;;                                                                              (fn [column-array-editor-state]
+;;                                                                                ())))}]}
+;;                                     :node (let [header (text (str (when reverse?
+;;                                                                     "<-")
+;;                                                                   (label db attribute)))]
+;;                                             (if (or (not (empty? sub-editors))
+;;                                                     show-empty-sub-column-prompt?)
+;;                                               (ver 3
+;;                                                    (table-view-header-row (mapcat (fn [value-entity]
+;;                                                                                     (value-entities reverse? db attribute value-entity))
+;;                                                                                   (take 10 current-level-value-entities)) ;; TODO create index to look up possible attributes
+;;                                                                           column-array-editor-state-atom db table-lens reverse? attribute show-empty-sub-column-prompt?)
+;;                                                    header)
+;;                                               header))}))
 
-                               show-empty-column-prompt? #_(starts-with? table-view-node-id @focused-node-id)
+;;                                show-empty-column-prompt? #_(starts-with? table-view-node-id @focused-node-id)
 
-                               false
+;;                                false
 
-                               (fn item-removal-transaction [editor]
-                                 (common/changes-to-remove-component-tree (common/deref db)
-                                                                          editor))
-                               (fn item-commands [editor]
-                                 (let [range (db-common/value-in db
-                                                                 editor
-                                                                 [(stred :attribute)
-                                                                  ])
-                                       reverse? (db-common/value db
-                                                                 editor
-                                                                 (stred :reverse?))]
+;;                                (fn item-removal-transaction [editor]
+;;                                  (common/changes-to-remove-component-tree (common/deref db)
+;;                                                                           editor))
+;;                                (fn item-commands [editor]
+;;                                  (let [range (db-common/value-in db
+;;                                                                  editor
+;;                                                                  [(stred :attribute)
+;;                                                                   ])
+;;                                        reverse? (db-common/value db
+;;                                                                  editor
+;;                                                                  (stred :reverse?))]
 
-                                   [{:name "toggle reverse"
-                                     :available? (do (prn 'range range) ;; TODO: remove me
-                                                     (or (nil? range)
-                                                         (= range (prelude :entity))
-                                                         (= range (prelude :type-type))))
-                                     :key-patterns [[#{:control} :r]]
-                                     :run! (fn [_subtree]
-                                             (transact! db [[:set editor (stred :reverse?) (not reverse?)]]))}]))))])
+;;                                    [{:name "toggle reverse"
+;;                                      :available? (do (prn 'range range) ;; TODO: remove me
+;;                                                      (or (nil? range)
+;;                                                          (= range (prelude :entity))
+;;                                                          (= range (prelude :type-type))))
+;;                                      :key-patterns [[#{:control} :r]]
+;;                                      :run! (fn [_subtree]
+;;                                              (transact! db [[:set editor (stred :reverse?) (not reverse?)]]))}]))))])
 
 (defn- value-entities [reverse? db attribute entity]
   (if reverse?
@@ -4773,27 +4774,6 @@
 ;;    :width (count string)
 ;;    :height 10})
 
-(defn header [label]
-  #_(text label)
-  (layouts/vertically-2 {:margin  0
-                         :limit-to-maximum-specified-width true}
-                        (text label)
-                        (assoc (visuals/rectangle-2 {:fill-color [150 150 255 255]})
-                               :height 10
-                               :width 10)))
-
-(defn hierarchical-table-layout-demo []
-  #_(ver 10
-         (header "header 1")
-         (header "header 222"))
-  (hierarchical-table/hierarchical-table [[(header "header 1")
-                                           [(header "header 1.1")]]
-                                          [(header "header 2")]]
-
-                                         [[(text "value 1")
-                                           (text "value 1.1")
-                                           (text "value 2")]]))
-
 ;; (defn multiplication-table []
 ;;   (box (layouts/with-margins 20 20 20 20
 ;;          (layouts/grid (for [y (range 1 11)]
@@ -4810,10 +4790,10 @@
 
 (defn start []
   (println "\n\n------------ start -------------\n\n")
-  (reset! event-channel-atom
+  (reset! dev/event-channel-atom
           (application/start-application ;; ui
            ;; #'notebook-ui
-           #'hierarchical-table-layout-demo
+           #'hierarchical-table/demo
 
            ;;#'multiplication-table
            ;; #'grid-demo
@@ -4824,7 +4804,7 @@
            ;; adapt-to-space-test-root
            ;; #'dynamic-scope-demo
            ;; #'table-demo
-           :on-exit #(reset! event-channel-atom nil)))
+           :on-exit #(reset! dev/event-channel-atom nil)))
 
   ;; (Thread/sleep 100)
 
@@ -4888,12 +4868,9 @@
 
 ;; TODO: remove me
 
-
-(when @event-channel-atom
-  (async/>!! @event-channel-atom
+(when @dev/event-channel-atom
+  (async/>!! @dev/event-channel-atom
              {:type :redraw}))
-
-
 
 ;; TODO:
 ;; * make merged-sorted writable so that new datoms are added to the downstream sorted

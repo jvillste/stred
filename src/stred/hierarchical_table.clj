@@ -1,9 +1,13 @@
 (ns stred.hierarchical-table
   (:require
    [clojure.test :refer :all]
+   [flow-gl.graphics.font :as font]
+   [flow-gl.gui.visuals :as visuals]
+   [fungl.component.text-area :as text-area]
+   [fungl.layout :as layout]
    [fungl.layouts :as layouts]
-   [medley.core :as medley]
-   [fungl.util :as util]))
+   [fungl.util :as util]
+   [medley.core :as medley]))
 
 (defn immediate-child? [parent-path child-path]
   (and (util/starts-with? parent-path child-path)
@@ -128,9 +132,10 @@
            max-height 0]
       (if-let [cell (first cells)]
         (recur (conj layouted-nodes
-                     (assoc cell
-                            :x x
-                            :y y))
+                     (layout/do-layout (assoc cell
+                                              :x x
+                                              :y y
+                                              :available-width (get column-widths-by-column-index (::column cell)))))
                (+ x (get column-widths-by-column-index (::column cell)))
                y
                (rest cells)
@@ -277,23 +282,26 @@
                                                                                          (rest child-branch))]
 
                                                 (recur (+ x
-                                                          (:width (first layouted-child-branch))
+                                                          (::header-width (first layouted-child-branch))
                                                           (:x (first layouted-child-branch)))
                                                        (rest remaining-child-branches)
                                                        (conj layouted-child-branches
-                                                             layouted-child-branch)))))]
+                                                             layouted-child-branch)))))
+                  width (if (empty? layouted-child-branches)
+                          (max (:width header)
+                               column-width)
+                          (apply +
+                                 column-width
+                                 (map ::header-width (map first layouted-child-branches))))]
 
-              (concat [(assoc header
-                              :x x
-                              :y (header-row-y header-row-heights
-                                               (dec (count (::path header))))
-                              ::has-children? (not (empty? layouted-child-branches))
-                              :width (if (empty? layouted-child-branches)
-                                       (max (:width header)
-                                            column-width)
-                                       (apply +
-                                              column-width
-                                              (map :width (map first layouted-child-branches)))))]
+              (concat [(layout/do-layout (assoc header
+                                                :x x
+                                                :y (header-row-y header-row-heights
+                                                                 (dec (count (::path header))))
+                                                ::has-children? (not (empty? layouted-child-branches))
+                                                :available-width width
+                                                ::header-width width
+                                                ))]
                       (apply concat layouted-child-branches))))]
     (rest (layout-header 0
                          {:width 0
@@ -303,46 +311,70 @@
                          (sort-headers headers)))))
 
 (deftest test-layout-headers
-  (is (= '({:text "header 1",
+  (is (= '({:y 0,
+            :stred.hierarchical-table/has-children? false,
+            :width-was-given true,
+            :children nil,
+            :stred.hierarchical-table/column 0,
+            :stred.hierarchical-table/path [0],
+            :available-width 8,
             :width 8,
-            :height 10,
-            ::path [0],
-            ::column 0,
+            :height-was-given true,
+            :stred.hierarchical-table/header-width 8,
             :x 0,
-            :y 0
-            ::has-children? false})
-         (layout-headers {0 1}
+            :height 10,
+            :text "header 1"})
+         (layout-headers {0 10}
+                         {0 1}
                          [{:text "header 1",
                            :width 8,
                            :height 10,
                            ::path [0],
                            ::column 0}])))
 
-  (is (= '({:text "header 1",
-            :width 11,
-            :height 10,
-            ::path [0],
-            ::column 0,
-            :x 0,
-            :y 0
-            ::has-children? true}
-           {:text "header 1 1",
-            :width 10,
-            :height 10,
-            ::path [0 1],
-            ::column 1,
-            :x 1,
-            :y 10
-            ::has-children? false}
-           {:text "header 2",
+  (is (= '({:y 0,
+            :stred.hierarchical-table/has-children? true,
+            :width-was-given true,
+            :children nil,
+            :stred.hierarchical-table/column 0,
+            :stred.hierarchical-table/path [0],
+            :available-width 11,
             :width 8,
+            :height-was-given true,
+            :stred.hierarchical-table/header-width 11,
+            :x 0,
             :height 10,
-            ::path [1],
-            ::column 2,
+            :text "header 1"}
+           {:y [0 10],
+            :stred.hierarchical-table/has-children? false,
+            :width-was-given true,
+            :children nil,
+            :stred.hierarchical-table/column 1,
+            :stred.hierarchical-table/path [0 1],
+            :available-width 10,
+            :width 10,
+            :height-was-given true,
+            :stred.hierarchical-table/header-width 10,
+            :x 1,
+            :height 10,
+            :text "header 1 1"}
+           {:y 0,
+            :stred.hierarchical-table/has-children? false,
+            :width-was-given true,
+            :children nil,
+            :stred.hierarchical-table/column 2,
+            :stred.hierarchical-table/path [1],
+            :available-width 8,
+            :width 8,
+            :height-was-given true,
+            :stred.hierarchical-table/header-width 8,
             :x 11,
-            :y 0
-            ::has-children? false})
-         (layout-headers {0 1
+            :height 10,
+            :text "header 2"})
+         (layout-headers {0 10
+                          1 10
+                          2 10}
+                         {0 1
                           1 2
                           2 3}
                          [{:text "header 1",
@@ -366,34 +398,19 @@
        (remove ::has-children?)
        (map (fn [header]
               [(::column header)
-               (:width header)]))
+               (::header-width header)]))
        (into {})))
 
 (deftest test-column-widths-from-headers
   (is (= {1 10, 2 8}
-         (column-widths-from-headers '({:text "header 1",
-                                        :width 11,
-                                        :height 10,
-                                        ::path [0],
-                                        ::column 0,
-                                        :x 0,
-                                        :y 0
+         (column-widths-from-headers '({::header-width 11,
+                                        ::column 0
                                         ::has-children? true}
-                                       {:text "header 1 1",
-                                        :width 10,
-                                        :height 10,
-                                        ::path [0 1],
-                                        ::column 1,
-                                        :x 1,
-                                        :y 10
+                                       {::header-width 10,
+                                        ::column 1
                                         ::has-children? false}
-                                       {:text "header 2",
-                                        :width 8,
-                                        :height 10,
-                                        ::path [1],
-                                        ::column 2,
-                                        :x 11,
-                                        :y 0
+                                       {::header-width 8,
+                                        ::column 2
                                         ::has-children? false})))))
 
 (defn- hierarchical-table-make-layout [node]
@@ -484,3 +501,38 @@
    :get-size hierarchical-table-get-size
    :give-space hierarchical-table-give-space
    :make-layout hierarchical-table-make-layout})
+
+
+;; DEMO
+
+
+(def font (font/create-by-name "CourierNewPSMT" 30))
+
+(defn- text [string]
+  (text-area/text (str string)
+                  [255 255 255 255]
+                  font))
+
+(defn header [label]
+  (layouts/with-margin 5
+    (layouts/vertically-2 {:margin  0}
+                          (text label)
+                          (assoc (visuals/rectangle-2 {:fill-color [150 150 255 255]})
+                                 :height 10))))
+
+(defn cell [string]
+  (layouts/with-margin 5
+    (layouts/box 5
+                 (visuals/rectangle-2 :fill-color [150 150 255 155]
+                                      :corner-arc-radius 40)
+                 (text string)
+                 {:fill-width? true})))
+
+(defn demo []
+    (hierarchical-table [[(header "header 1")
+                        [(header "long header 1.1")]]
+                       [(header "header 2")]]
+
+                      [[(cell "value 1")
+                        (cell "value 1.1")
+                        (cell "value 2")]]))
