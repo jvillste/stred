@@ -14,18 +14,19 @@
        (= (count parent-path)
           (dec (count child-path)))))
 
-(defn header-size [header headers column-widths-by-column-index]
+(defn header-size [the-header headers the-column-widths-by-column-index]
   (let [child-sizes (map (fn [child-header]
-                           (header-size child-header headers column-widths-by-column-index))
+                           (header-size child-header headers the-column-widths-by-column-index))
                          (filter (fn [child-candidate]
-                                   (immediate-child? (::path header)
+                                   (immediate-child? (::path the-header)
                                                      (::path child-candidate)))
                                  headers))]
-    {:width (max (:width header)
-                 (+ (get column-widths-by-column-index
-                         (::column header))
+    {:width (max (:width the-header)
+                 (+ (or (get the-column-widths-by-column-index
+                             (::column the-header))
+                        0)
                     (reduce + (map :width child-sizes))))
-     :height (+ (:height header)
+     :height (+ (:height the-header)
                 (apply max (conj (map :height child-sizes)
                                  0)))}))
 
@@ -61,14 +62,15 @@
        (medley/map-vals (fn [column]
                           (apply max (map :width column))))))
 
-(defn- hierarchical-table-get-size [hierachical-table-node]
+(defn- hierarchical-table-get-size [hierachical-table-node _available-width _available-height]
   (let [[header-nodes row-nodes] (partition-by (fn [node]
                                                  (some? (::path node)))
                                                (:children hierachical-table-node))
-        column-widths-by-column-index (column-widths-by-column-index row-nodes)
+        the-column-widths-by-column-index (column-widths-by-column-index row-nodes)
         root-header-sizes (map (fn [header]
-                                 (header-size header header-nodes column-widths-by-column-index))
+                                 (header-size header header-nodes the-column-widths-by-column-index))
                                header-nodes)]
+
     {:width (reduce + (map :width root-header-sizes))
      :height (+ (apply max (map :height root-header-sizes))
                 (->> (group-by ::row row-nodes)
@@ -123,6 +125,8 @@
                                :available-height java.lang.Integer/MAX_VALUE)))))))
 
 (defn layout-rows [min-y column-widths-by-column-index nodes]
+  (prn 'min-y min-y) ;; TODO: remove me
+
   (let [rows (partition-by ::row nodes)]
     (loop [layouted-nodes []
            x 0
@@ -132,10 +136,12 @@
            max-height 0]
       (if-let [cell (first cells)]
         (recur (conj layouted-nodes
-                     (layout/do-layout (assoc cell
-                                              :x x
-                                              :y y
-                                              :available-width (get column-widths-by-column-index (::column cell)))))
+                     (layout/do-layout-with-cache (assoc cell
+                                                         :x x
+                                                         :y y
+                                                         :available-width (get column-widths-by-column-index (::column cell)))
+                                                  java.lang.Integer/MAX_VALUE
+                                                  java.lang.Integer/MAX_VALUE))
                (+ x (get column-widths-by-column-index (::column cell)))
                y
                (rest cells)
@@ -294,14 +300,15 @@
                                  column-width
                                  (map ::header-width (map first layouted-child-branches))))]
 
-              (concat [(layout/do-layout (assoc header
-                                                :x x
-                                                :y (header-row-y header-row-heights
-                                                                 (dec (count (::path header))))
-                                                ::has-children? (not (empty? layouted-child-branches))
-                                                :available-width width
-                                                ::header-width width
-                                                ))]
+              (concat [(layout/do-layout-with-cache (assoc header
+                                                           :x x
+                                                           :y (header-row-y header-row-heights
+                                                                            (dec (count (::path header))))
+                                                           ::has-children? (not (empty? layouted-child-branches))
+                                                           :available-width width
+                                                           ::header-width width)
+                                                    java.lang.Integer/MAX_VALUE
+                                                    java.lang.Integer/MAX_VALUE)]
                       (apply concat layouted-child-branches))))]
     (rest (layout-header 0
                          {:width 0
@@ -423,6 +430,8 @@
                layouted-headers (layout-headers header-row-heights
                                                 column-widths-by-column-index
                                                 header-nodes)]
+           (prn 'header-row-heights header-row-heights) ;; TODO: remove me
+
            (concat layouted-headers
                    (layout-rows (reduce + header-row-heights)
                                 (merge-with max
@@ -432,9 +441,9 @@
 
 (defn- flatten-header-hierarchy [path column [header & sub-headers]]
   (apply concat
-         [(-> header
-              (assoc ::path path)
-              (assoc ::column column))]
+         [{:node header
+           ::path path
+           ::column column}]
          (map-indexed (fn [index sub-header]
                         (flatten-header-hierarchy (conj path (inc index))
                                                   (+ (inc index) column)
@@ -455,24 +464,19 @@
                (concat flat-headers flattened-header-hierarchy))))))
 
 (deftest test-flatten-headers
-  (is (= '({:text "header 1",
-            :width 8,
-            :height 10,
+  (is (= '({:stred.hierarchical-table/column 0,
             :stred.hierarchical-table/path [0],
-            :stred.hierarchical-table/column 0}
-           {:text "header 1 1",
-            :width 10,
-            :height 10,
+            :node {:text "header 1", :width 8, :height 10}}
+           {:stred.hierarchical-table/column 1,
             :stred.hierarchical-table/path [0 1],
-            :stred.hierarchical-table/column 1}
-           {:text "header 2",
-            :width 8,
-            :height 10,
+            :node {:text "header 1 1", :width 10, :height 10}}
+           {:stred.hierarchical-table/column 2,
             :stred.hierarchical-table/path [1],
-            :stred.hierarchical-table/column 2})
+            :node {:text "header 2", :width 8, :height 10}})
          (flatten-headers [[{:text "header 1", :width 8, :height 10}
                             [{:text "header 1 1", :width 10, :height 10}]]
-                           [{:text "header 2", :width 8, :height 10}]]))))
+                           [{:text "header 2", :width 8, :height 10}
+                            []]]))))
 
 (defn flatten-rows [rows]
   (apply concat
@@ -505,7 +509,6 @@
 
 ;; DEMO
 
-
 (def font (font/create-by-name "CourierNewPSMT" 30))
 
 (defn- text [string]
@@ -518,7 +521,8 @@
     (layouts/vertically-2 {:margin  0}
                           (text label)
                           (assoc (visuals/rectangle-2 {:fill-color [150 150 255 255]})
-                                 :height 10))))
+                                 :height 10
+                                 :width 100))))
 
 (defn cell [string]
   (layouts/with-margin 5
@@ -529,10 +533,22 @@
                  {:fill-width? true})))
 
 (defn demo []
-    (hierarchical-table [[(header "header 1")
+  (hierarchical-table [[(header "header 1")
                         [(header "long header 1.1")]]
                        [(header "header 2")]]
 
                       [[(cell "value 1")
                         (cell "value 1.1")
-                        (cell "value 2")]]))
+                        (cell "long value 2")]])
+
+  ;; (hierarchical-table [[(text "")]]
+
+  ;;                     [[(cell "value 1")
+  ;;                       (cell "value 1.1")
+  ;;                       (cell "value 2")]])
+  )
+
+
+(when @stred.dev/event-channel-atom
+  (clojure.core.async/>!! @stred.dev/event-channel-atom
+                          {:type :redraw}))
