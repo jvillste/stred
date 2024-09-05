@@ -125,8 +125,6 @@
                                :available-height java.lang.Integer/MAX_VALUE)))))))
 
 (defn layout-rows [min-y column-widths-by-column-index nodes]
-  (prn 'min-y min-y) ;; TODO: remove me
-
   (let [rows (partition-by ::row nodes)]
     (loop [layouted-nodes []
            x 0
@@ -136,12 +134,12 @@
            max-height 0]
       (if-let [cell (first cells)]
         (recur (conj layouted-nodes
-                     (layout/do-layout-with-cache (assoc cell
-                                                         :x x
-                                                         :y y
-                                                         :available-width (get column-widths-by-column-index (::column cell)))
-                                                  java.lang.Integer/MAX_VALUE
-                                                  java.lang.Integer/MAX_VALUE))
+                     (layout/layout-node (assoc cell
+                                                :x x
+                                                :y y
+                                                :available-width (get column-widths-by-column-index (::column cell)))
+                                         java.lang.Integer/MAX_VALUE
+                                         java.lang.Integer/MAX_VALUE))
                (+ x (get column-widths-by-column-index (::column cell)))
                y
                (rest cells)
@@ -300,15 +298,15 @@
                                  column-width
                                  (map ::header-width (map first layouted-child-branches))))]
 
-              (concat [(layout/do-layout-with-cache (assoc header
-                                                           :x x
-                                                           :y (header-row-y header-row-heights
-                                                                            (dec (count (::path header))))
-                                                           ::has-children? (not (empty? layouted-child-branches))
-                                                           :available-width width
-                                                           ::header-width width)
-                                                    java.lang.Integer/MAX_VALUE
-                                                    java.lang.Integer/MAX_VALUE)]
+              (concat [(layout/layout-node (assoc header
+                                                  :x x
+                                                  :y (header-row-y header-row-heights
+                                                                   (dec (count (::path header))))
+                                                  ::has-children? (not (empty? layouted-child-branches))
+                                                  :available-width width
+                                                  ::header-width width)
+                                           java.lang.Integer/MAX_VALUE
+                                           java.lang.Integer/MAX_VALUE)]
                       (apply concat layouted-child-branches))))]
     (rest (layout-header 0
                          {:width 0
@@ -430,8 +428,6 @@
                layouted-headers (layout-headers header-row-heights
                                                 column-widths-by-column-index
                                                 header-nodes)]
-           (prn 'header-row-heights header-row-heights) ;; TODO: remove me
-
            (concat layouted-headers
                    (layout-rows (reduce + header-row-heights)
                                 (merge-with max
