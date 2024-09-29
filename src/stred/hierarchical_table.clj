@@ -284,8 +284,7 @@
                                                                                          (rest child-branch))]
 
                                                 (recur (+ x
-                                                          (::header-width (first layouted-child-branch))
-                                                          (:x (first layouted-child-branch)))
+                                                          (::header-width (first layouted-child-branch)))
                                                        (rest remaining-child-branches)
                                                        (conj layouted-child-branches
                                                              layouted-child-branch)))))
@@ -526,11 +525,13 @@
 (defn demo []
   (hierarchical-table [[(header "header 1")
                         [(header "long header 1.1")]]
-                       [(header "header 2")]]
+                       [(header "header 2")]
+                       [(header "header 3")]]
 
                       [[(cell "value 1")
                         (cell "value 1.1")
-                        (cell "long value 2")]])
+                        (cell "long value 2")
+                        (cell "long value 3")]])
 
   ;; (hierarchical-table [[(text "")]]
 
