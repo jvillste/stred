@@ -4593,7 +4593,7 @@
 
   event)
 
-(defn- table-view-value-row [index state db value-entity lens-map shared-lens add-lens state-atom entity attribute reverse? table-lens]
+(defn- table-view-value-row [index state db value-entity lens-map shared-lens add-lens state-atom entity attribute reverse? table-lens column-insertion-index]
   (concat [(highlight-2 (= index (:selected-index state))
                         {:mouse-event-handler [focus-on-click-mouse-event-handler]
                          :command-set table-cell-command-set
@@ -4610,103 +4610,106 @@
                                                   shared-lens)
                                               {:add-lens (fn []
                                                            (add-lens value-entity))}])})]
-          (for [editor (db-common/value db table-lens (stred :editors))]
-            #_(text  (pr-str editor (db-common/value db editor (stred :attribute))) #_(db-common/values db
-                                                                                                        value-entity
-                                                                                                        (db-common/value db editor (stred :attribute))))
-            #_(ver 0 (for [cell-value (db-common/values db
-                                                        value-entity
-                                                        (db-common/value db editor (stred :attribute)))]
-                       (value-view db cell-value)))
+          (apply concat
+                 (for [[index editor] (map-indexed vector (db-common/value db table-lens (stred :editors)))]
+                   #_(text  (pr-str editor (db-common/value db editor (stred :attribute))) #_(db-common/values db
+                                                                                                               value-entity
+                                                                                                               (db-common/value db editor (stred :attribute))))
+                   #_(ver 0 (for [cell-value (db-common/values db
+                                                               value-entity
+                                                               (db-common/value db editor (stred :attribute)))]
+                              (value-view db cell-value)))
 
-            (let [attribute (db-common/value db
-                                             editor
-                                             (stred :attribute))
-                  reverse? (db-common/value db
-                                            editor
-                                            (stred :reverse?))
-                  lens-map (db-common/value db
-                                            editor
-                                            (stred :lens-map))
-                  shared-lens (db-common/value db
-                                               editor
-                                               (stred :value-lens))
-                  value (db-common/value db
-                                         value-entity
-                                         attribute)
-                  range (cond reverse?
-                              (prelude :entity)
-
-                              (vector? value)
-                              (prelude :array)
-
-                              (string? value)
-                              (prelude :text)
-
-                              (entity-id/entity-id? value)
-                              (prelude :entity)
-
-                              :else
-                              (db-common/value db
-                                               attribute
-                                               (prelude :range)))
-
-                  entity-attribute-editor-call [entity-attribute-editor
-                                                db
+                   (let [attribute (db-common/value db
+                                                    editor
+                                                    (stred :attribute))
+                         reverse? (db-common/value db
+                                                   editor
+                                                   (stred :reverse?))
+                         lens-map (db-common/value db
+                                                   editor
+                                                   (stred :lens-map))
+                         shared-lens (db-common/value db
+                                                      editor
+                                                      (stred :value-lens))
+                         value (db-common/value db
                                                 value-entity
-                                                attribute
-                                                lens-map
-                                                {:reverse? reverse?
-                                                 :shared-lens shared-lens
-                                                 :add-lens (fn [value]
-                                                             ;; TODO: remove nonexisting values from lens map
-                                                             (transact! db [[:set editor (stred :lens-map)
-                                                                             (assoc lens-map value :tmp/new-lens)]]))}]]
+                                                attribute)
+                         range (cond reverse?
+                                     (prelude :entity)
 
+                                     (vector? value)
+                                     (prelude :array)
 
-              { ;; :can-gain-focus? true
-               :command-set table-cell-command-set
-               :node (layouts/wrap (if range
-                                     (condp = range
-                                       (prelude :text)
-                                       [text-attribute-editor
-                                        db
-                                        value-entity
-                                        (db-common/value db
-                                                         editor
-                                                         (stred :attribute))]
+                                     (string? value)
+                                     (prelude :text)
 
-                                       (prelude :entity)
-                                       entity-attribute-editor-call
+                                     (entity-id/entity-id? value)
+                                     (prelude :entity)
 
-                                       (prelude :type-type) ;; TODO make type-type a subtype of entity
-                                       entity-attribute-editor-call
+                                     :else
+                                     (db-common/value db
+                                                      attribute
+                                                      (prelude :range)))
 
-                                       (prelude :array)
-                                       (ver 0
-                                            (text "[")
-                                            [entity-array-attribute-editor-2
-                                             db
-                                             value-entity
-                                             attribute
-                                             lens-map
-                                             {:shared-lens shared-lens
-                                              :add-lens (fn [value]
-                                                          (transact! db [[:set editor (stred :lens-map)
-                                                                          (assoc lens-map value :tmp/new-lens)]]))}]
-                                            (text "]"))
-
-                                       (text (str (pr-str editor)
-                                                  " "
-                                                  (pr-str (db-common/value db
+                         entity-attribute-editor-call [entity-attribute-editor
+                                                       db
+                                                       value-entity
+                                                       attribute
+                                                       lens-map
+                                                       {:reverse? reverse?
+                                                        :shared-lens shared-lens
+                                                        :add-lens (fn [value]
+                                                                    ;; TODO: remove nonexisting values from lens map
+                                                                    (transact! db [[:set editor (stred :lens-map)
+                                                                                    (assoc lens-map value :tmp/new-lens)]]))}]
+                         editor { ;; :can-gain-focus? true
+                                 :command-set table-cell-command-set
+                                 :node (layouts/wrap (if range
+                                                       (condp = range
+                                                         (prelude :text)
+                                                         [text-attribute-editor
+                                                          db
+                                                          value-entity
+                                                          (db-common/value db
                                                                            editor
-                                                                           (prelude :type-attribute))))))
+                                                                           (stred :attribute))]
 
-                                     [empty-attribute-prompt
-                                      db
-                                      value-entity
-                                      attribute
-                                      reverse?]))}))))
+                                                         (prelude :entity)
+                                                         entity-attribute-editor-call
+
+                                                         (prelude :type-type) ;; TODO make type-type a subtype of entity
+                                                         entity-attribute-editor-call
+
+                                                         (prelude :array)
+                                                         (ver 0
+                                                              (text "[")
+                                                              [entity-array-attribute-editor-2
+                                                               db
+                                                               value-entity
+                                                               attribute
+                                                               lens-map
+                                                               {:shared-lens shared-lens
+                                                                :add-lens (fn [value]
+                                                                            (transact! db [[:set editor (stred :lens-map)
+                                                                                            (assoc lens-map value :tmp/new-lens)]]))}]
+                                                              (text "]"))
+
+                                                         (text (str (pr-str editor)
+                                                                    " "
+                                                                    (pr-str (db-common/value db
+                                                                                             editor
+                                                                                             (prelude :type-attribute))))))
+
+                                                       [empty-attribute-prompt
+                                                        db
+                                                        value-entity
+                                                        attribute
+                                                        reverse?]))}]
+                     (if (= index column-insertion-index)
+                       [(text  "")
+                        editor]
+                       [editor]))))))
 
 (defn table-view [_db _entity _attribute _lens-map & _options]
   (let [column-array-editor-state-atom (dependable-atom/atom "column-array-editor-state"
@@ -4735,7 +4738,7 @@
                                                                           [[(table-view-row-prompt value-entities state-atom table-view-node-id db reverse? attribute entity)]])
 
                                                                         (map-indexed (fn [index value-entity]
-                                                                                       (table-view-value-row index state db value-entity lens-map shared-lens add-lens state-atom entity attribute reverse? table-lens))
+                                                                                       (table-view-value-row index state db value-entity lens-map shared-lens add-lens state-atom entity attribute reverse? table-lens (:insertion-index @column-array-editor-state-atom)))
                                                                                      (take page-size
                                                                                            (drop (* page-size
                                                                                                     (:page state))
@@ -4812,7 +4815,7 @@
   (println "\n\n------------ start -------------\n\n")
   (reset! dev/event-channel-atom
           (application/start-application ;; ui
-           #'notebook-ui
+            #'notebook-ui
            ;; #'hierarchical-table/demo
 
            ;;#'multiplication-table
