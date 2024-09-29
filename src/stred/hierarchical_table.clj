@@ -134,12 +134,10 @@
            max-height 0]
       (if-let [cell (first cells)]
         (recur (conj layouted-nodes
-                     (layout/layout-node (assoc cell
-                                                :x x
-                                                :y y
-                                                :available-width (get column-widths-by-column-index (::column cell)))
-                                         java.lang.Integer/MAX_VALUE
-                                         java.lang.Integer/MAX_VALUE))
+                     (assoc cell
+                            :x x
+                            :y y
+                            :available-width (get column-widths-by-column-index (::column cell))))
                (+ x (get column-widths-by-column-index (::column cell)))
                y
                (rest cells)
@@ -297,16 +295,13 @@
                           (apply +
                                  column-width
                                  (map ::header-width (map first layouted-child-branches))))]
-
-              (concat [(layout/layout-node (assoc header
-                                                  :x x
-                                                  :y (header-row-y header-row-heights
-                                                                   (dec (count (::path header))))
-                                                  ::has-children? (not (empty? layouted-child-branches))
-                                                  :available-width width
-                                                  ::header-width width)
-                                           java.lang.Integer/MAX_VALUE
-                                           java.lang.Integer/MAX_VALUE)]
+              (concat [(assoc header
+                              :x x
+                              :y (header-row-y header-row-heights
+                                               (dec (count (::path header))))
+                              ::has-children? (not (empty? layouted-child-branches))
+                              :available-width width
+                              ::header-width width)]
                       (apply concat layouted-child-branches))))]
     (rest (layout-header 0
                          {:width 0
