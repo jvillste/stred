@@ -2333,7 +2333,7 @@
                                                                                                 (keyboard/set-focused-node!)))))}
                                              {:name "hide prompt"
                                               :available? (:show-empty-prompt? @state-atom)
-                                              :key-patterns [[#{:meta} :a]]
+                                              :key-patterns [[#{:meta} :a] [#{:meta} :e]]
                                               :run! (fn [_subtree]
                                                       (swap! state-atom assoc :show-empty-prompt? false))}
 
@@ -3471,14 +3471,17 @@
                                current-absolute-y (reduce + (map :y (remove #(= :scrolling-pane
                                                                                 (:local-id %))
                                                                             focused-path)))
-                               middle-y (/ (:available-height scrolling-pane)
+                               middle-y (/ (:height scrolling-pane)
                                            2)
-                               middle-scroll-y (+ middle-y
-                                                  (- current-absolute-y))]
+                               middle-scroll-y (- middle-y
+                                                  (/ (:height (last focused-path))
+                                                     2)
+                                                  current-absolute-y)]
                            (swap! state-atom assoc :y (if (= (:y state)
                                                              middle-scroll-y)
                                                         (+ 20 (- current-absolute-y))
                                                         middle-scroll-y))))}]}))
+
 
 (comment
   (scene-graph/path-to the-current-scene-graph
