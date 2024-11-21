@@ -995,18 +995,19 @@
 (def column-width 1200)
 
 (defn entity-value-type-view [db value value-view]
-  (chor 10
-        (let [type (db-common/value db
-                                    value
-                                    (prelude :type-attribute))]
-          (highlight (if type
-                       (text (or (label db type)
-                                 (value-string db type))
-                             {:color (:background-color theme)})
-                       {:width 30
-                        :height 30})
-                     {:fill-color (:symbol-background theme)}))
-        value-view))
+  (hor 10
+       (layouts/with-margins 5 0 0 0
+         (let [type (db-common/value db
+                                     value
+                                     (prelude :type-attribute))]
+           (highlight (if type
+                        (text (or (label db type)
+                                  (value-string db type))
+                              {:color (:background-color theme)})
+                        {:width 30
+                         :height 30})
+                      {:fill-color (:symbol-background theme)})))
+       value-view))
 
 (defn value-view [db value]
   ;;(text (value-string db value))
@@ -4109,15 +4110,6 @@
                        ;; "du" "temp/du"
                        "uoa" "temp/uses-of-argument"
                        index-definitions)))
-
-
-(comment
-  (layout/do-layout-for-size (layouts/grid [[{:width 10 :height 20}]
-                                            [{:width 100 :height 20}]])
-                             100
-                             100)
-  ) ;; TODO: remove me
-
 
 (defn state-demo []
   (let [state (dependable-atom/atom 0)]
