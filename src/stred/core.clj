@@ -45,6 +45,8 @@
    [stred.hierarchical-table :as hierarchical-table]
    [stred.dev :as dev]))
 
+(def ^:dynamic global-state-atom)
+
 (def uncommitted-stream-id "uncommitted")
 
 (defn assoc-last [& arguments]
@@ -847,7 +849,7 @@
                                     [attribute value])))
 
 (defn label [db entity]
-  (if (:show-entity-ids? @application/state-atom)
+  (if (:show-entity-ids? @global-state-atom)
     (str (if (entity-id/entity-id? entity)
            (str (:stream-id entity) "/" (:id entity))
            entity)
@@ -3391,7 +3393,7 @@
                  :available? true
                  :key-patterns [[#{:meta} :w]]
                  :run! (fn [_subtree]
-                         (swap! application/state-atom
+                         (swap! global-state-atom
                                 update :show-entity-ids? not))}
                 {:name "descent focus"
                  :available? true
@@ -4910,21 +4912,22 @@
 
 (defn start []
   (println "\n\n------------ start -------------\n\n")
-  (reset! dev/event-channel-atom
-          (application/start-application ;; ui
-           #'notebook-ui
-           ;; #'hierarchical-table/demo
+  (with-bindings {#'global-state-atom (dependable-atom/atom {})}
+    (reset! dev/event-channel-atom
+            (application/start-application ;; ui
+             #'notebook-ui
+             ;; #'hierarchical-table/demo
 
-           ;;#'multiplication-table
-           ;; #'grid-demo
-           ;; #'z-order-demo
-           ;; #'split-demo
-           ;; #'performance-test-root
-           ;;  #'image-cache-test-root
-           ;; adapt-to-space-test-root
-           ;; #'dynamic-scope-demo
-           ;; #'table-demo
-           :on-exit #(reset! dev/event-channel-atom nil)))
+             ;;#'multiplication-table
+             ;; #'grid-demo
+             ;; #'z-order-demo
+             ;; #'split-demo
+             ;; #'performance-test-root
+             ;;  #'image-cache-test-root
+             ;; adapt-to-space-test-root
+             ;; #'dynamic-scope-demo
+             ;; #'table-demo
+             :on-exit #(reset! dev/event-channel-atom nil))))
 
   ;; (Thread/sleep 100)
 
