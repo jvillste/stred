@@ -1397,7 +1397,8 @@
                                         assoc :show-dropdown? true))}
 
                         {:name "hide dropdown"
-                         :available? (:show-dropdown? state)
+                         :available? (and (:show-dropdown? state)
+                                          (not (empty? (:text @state-atom))))
                          :key-patterns escape-key-pattern-sequences
                          :run! (fn [_subtree]
                                  (swap! state-atom
