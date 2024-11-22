@@ -2420,14 +2420,16 @@
                                                       (when (nil? lens)
                                                         (add-lens))
                                                       (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                                           (->> (scene-graph/find-first-breath-first #(= outline-view-id
-                                                                                                                                         (:id %))
-                                                                                                                                     scene-graph)
+                                                                                           (->> scene-graph
+                                                                                                (scene-graph/find-first-breath-first #(= outline-view-id
+                                                                                                                                         (:id %)))
+                                                                                                (scene-graph/find-first-breath-first #(= :insertion-prompt
+                                                                                                                                         (:local-id %)))
                                                                                                 (scene-graph/find-first-child :can-gain-focus?)
                                                                                                 (keyboard/set-focused-node!)))))}
                                              {:name "hide prompt"
                                               :available? (:show-empty-prompt? @state-atom)
-                                              :key-patterns [[#{:meta} :a] [#{:meta} :e]]
+                                              :key-patterns escape-key-pattern-sequences
                                               :run! (fn [_subtree]
                                                       (swap! state-atom assoc :show-empty-prompt? false))}
 
