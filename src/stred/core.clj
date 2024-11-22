@@ -2370,7 +2370,8 @@
               {:entity attribute
                :view (text (str "<- " (label db attribute)))
                :reverse? true})
-            (for [attribute (remove all-existing-attributes
+            (for [attribute (remove (set/union visible-attributes-set
+                                               visible-reverse-attributes-set)
                                     (if (empty? query-text)
                                       []
                                       (distinct (search-entities db
