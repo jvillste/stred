@@ -2235,6 +2235,86 @@
                {:font bold-font}))
        editor))
 
+;; NOW TODO: remove me
+(defn property-editor [_db _entity _attribute _reverse? _editor-entity _editor]
+  (let [state-atom (dependable-atom/atom {})]
+    (fn [db entity attribute reverse? editor-entity editor-view]
+      {:node (hor 0
+                  (if (:show-attribute-prompt? @state-atom)
+                    {:local-id :new-attribute-prompt
+                     :node [prompt-2
+                            (fn commands [query-text]
+                              (concat (when (not (empty? query-text))
+                                        (for [attribute-candidate (remove #{attribute}
+                                                                          (search-entities db
+                                                                                           (prelude :attribute)
+                                                                                           query-text))]
+                                          {:view (text (str (str (when reverse?
+                                                                   "<-")
+                                                                 (label db attribute-candidate)))
+                                                       {:font bold-font})
+                                           :run! (fn [_subtree]
+                                                   (swap! state-atom assoc :show-attribute-prompt? false)
+                                                   (transact! db (concat [[:remove editor-entity (stred :attribute) attribute]
+                                                                          [:add editor-entity (stred :attribute) attribute-candidate]]
+                                                                         (if reverse?
+                                                                           (db-common/changes-to-change-reverse-attribute (db-common/deref db)
+                                                                                                                          entity
+                                                                                                                          attribute
+                                                                                                                          attribute-candidate)
+                                                                           (db-common/changes-to-change-attribute (db-common/deref db)
+                                                                                                                  entity
+                                                                                                                  attribute
+                                                                                                                  attribute-candidate)))))}))
+
+                                      (when (not (empty? query-text))
+                                        [{:name "Create new attribute"
+                                          :key-patterns  [[#{:control} :c] [#{:control} :c]]
+                                          :run! (fn [_subtree]
+                                                  (swap! state-atom assoc :show-attribute-prompt? false)
+                                                  (transact! db (concat [[:remove editor-entity (stred :attribute) attribute]
+                                                                         [:add editor-entity (stred :attribute) :tmp/new-attribute]]
+                                                                        (db-common/changes-to-change-attribute (db-common/deref db)
+                                                                                                               entity
+                                                                                                               attribute
+                                                                                                               :tmp/new-attribute)
+                                                                        [[:add
+                                                                          :tmp/new-attribute
+                                                                          (prelude :type-attribute)
+                                                                          (prelude :attribute)]
+
+                                                                         [:add
+                                                                          :tmp/new-attribute
+                                                                          (prelude :label)
+                                                                          (:label query-text)]])))}])))]}
+                    (layouts/with-margins 0 0 0 0
+                      (text (str (str (when reverse?
+                                        "<-")
+                                      (label db attribute))
+                                 ":")
+                            {:font bold-font})))
+                  editor-view)
+       :command-set {:name "property"
+                     :commands [{:name "change attribute"
+                                 :available? (not (:show-attribute-prompt? @state-atom))
+                                 :key-patterns [[[#{:control} :a]]]
+                                 :run! (fn [subtree]
+                                         (swap! state-atom assoc :show-attribute-prompt? true)
+
+                                         (keyboard/handle-next-scene-graph! (fn [scene-graph]
+                                                                              (->> scene-graph
+                                                                                   (scene-graph/find-first-breath-first #(= (:id subtree)
+                                                                                                                            (:id %)))
+                                                                                   (scene-graph/find-first #(= :new-attribute-prompt (:local-id %)))
+                                                                                   (scene-graph/find-first :can-gain-focus?)
+                                                                                   keyboard/set-focused-node!))))}
+
+                                {:name "cancel attribute change"
+                                 :available? (:show-attribute-prompt? @state-atom)
+                                 :key-patterns escape-key-pattern-sequences
+                                 :run! (fn [_subtree]
+                                         (swap! state-atom assoc :show-attribute-prompt? false))}]}})))
+
 (defn available-lens-editor-items [query-text db lens entities]
   (let [existing-attributes-set (->> (mapcat #(common/entity-attributes db %)
                                              entities)
@@ -2532,54 +2612,54 @@
                                                       ;; TODO: remove nonexisting values from lens map
                                                       (transact! db [[:set editor (stred :lens-map)
                                                                       (assoc lens-map value :tmp/new-lens)]]))}]]
-                                  (property (str (when reverse?
-                                                   "<-")
-                                                 (label db attribute))
-                                            #_(str (or (:stream-id attribute)
-                                                       :tmp)
-                                                   "/"
-                                                   (label db attribute))
-                                            (if range
-                                              (condp = range
-                                                (prelude :text)
-                                                [text-attribute-editor
-                                                 db
-                                                 entity
-                                                 (db-common/value db
-                                                                  editor
-                                                                  (stred :attribute))]
+                                  ;; NOW TODO: remove me
+                                  [property-editor
+                                   db
+                                   entity
+                                   attribute
+                                   reverse?
+                                   editor
+                                   (if range
+                                     (condp = range
+                                       (prelude :text)
+                                       [text-attribute-editor
+                                        db
+                                        entity
+                                        (db-common/value db
+                                                         editor
+                                                         (stred :attribute))]
 
-                                                (prelude :entity)
-                                                entity-attribute-editor-call
+                                       (prelude :entity)
+                                       entity-attribute-editor-call
 
-                                                (prelude :type-type) ;; TODO make type-type a subtype of entity
-                                                entity-attribute-editor-call
+                                       (prelude :type-type) ;; TODO make type-type a subtype of entity
+                                       entity-attribute-editor-call
 
-                                                (prelude :array)
-                                                (ver 0
-                                                     (text "[")
-                                                     [entity-array-attribute-editor-2
-                                                      db
-                                                      entity
-                                                      attribute
-                                                      lens-map
-                                                      {:shared-lens shared-lens
-                                                       :add-lens (fn [value]
-                                                                   (transact! db [[:set editor (stred :lens-map)
-                                                                                   (assoc lens-map value :tmp/new-lens)]]))}]
-                                                     (text "]"))
+                                       (prelude :array)
+                                       (ver 0
+                                            (text "[")
+                                            [entity-array-attribute-editor-2
+                                             db
+                                             entity
+                                             attribute
+                                             lens-map
+                                             {:shared-lens shared-lens
+                                              :add-lens (fn [value]
+                                                          (transact! db [[:set editor (stred :lens-map)
+                                                                          (assoc lens-map value :tmp/new-lens)]]))}]
+                                            (text "]"))
 
-                                                (text (str (pr-str editor)
-                                                           " "
-                                                           (pr-str (db-common/value db
-                                                                                    editor
-                                                                                    (prelude :type-attribute))))))
+                                       (text (str (pr-str editor)
+                                                  " "
+                                                  (pr-str (db-common/value db
+                                                                           editor
+                                                                           (prelude :type-attribute))))))
 
-                                              [empty-attribute-prompt
-                                               db
-                                               entity
-                                               attribute
-                                               reverse?]))))
+                                     [empty-attribute-prompt
+                                      db
+                                      entity
+                                      attribute
+                                      reverse?])]))
 
                               {:item-commands (fn [editor]
                                                 (let [range (db-common/value-in db
