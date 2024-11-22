@@ -45,6 +45,7 @@
    [stred.hierarchical-table :as hierarchical-table]
    [stred.dev :as dev]))
 
+(def uncommitted-stream-id "uncommitted")
 
 (defn assoc-last [& arguments]
   (apply assoc (last arguments)
@@ -403,6 +404,19 @@
                 (temporary-ids/temporary-id (str "id-" (:id value)))
                 value))
             datom)))
+
+(defn unmerged-entity-id-to-merged-stream-id [unmberged-stream-id unmerged-entity-id temporary-id-resolution]
+  (get temporary-id-resolution
+       (stream-entity-id-to-temporary-id unmberged-stream-id
+                                         unmerged-entity-id)))
+
+(deftest test-unmerged-entity-id-to-merged-stream-id
+  (is (= {:id 358, :stream-id "main"}
+         (unmerged-entity-id-to-merged-stream-id uncommitted-stream-id
+                                                 {:id 0, :stream-id uncommitted-stream-id}
+                                                 #:tmp{:id-1 {:id 356, :stream-id "main"},
+                                                       :id-2 {:id 357, :stream-id "main"},
+                                                       :id-0 {:id 358, :stream-id "main"}}))))
 
 (defn branch-changes [stream-db-branch]
   (->> (:branch-transaction-log stream-db-branch)
@@ -2235,7 +2249,6 @@
                {:font bold-font}))
        editor))
 
-;; NOW TODO: remove me
 (defn property-editor [_db _entity _attribute _reverse? _editor-entity _editor]
   (let [state-atom (dependable-atom/atom {})]
     (fn [db entity attribute reverse? editor-entity editor-view]
@@ -2612,7 +2625,6 @@
                                                       ;; TODO: remove nonexisting values from lens map
                                                       (transact! db [[:set editor (stred :lens-map)
                                                                       (assoc lens-map value :tmp/new-lens)]]))}]]
-                                  ;; NOW TODO: remove me
                                   [property-editor
                                    db
                                    entity
@@ -2892,7 +2904,7 @@
 
 
 (deftest test-undo-and-redo
-  (let [state-atom (atom {:branch (create-stream-db-branch "uncommitted"
+  (let [state-atom (atom {:branch (create-stream-db-branch uncommitted-stream-id
                                                            (db-common/deref (doto (create-dependable-stream-db-in-memory "base" index-definitions)
                                                                               (transact! [[:add :entity-1 :label 0]]))))
                           :undoed-transactions '()})]
@@ -3148,7 +3160,7 @@
                                                                                         ;; (filter temporary-ids/temporary-id?
                                                                                         ;;         types)
                                                                                         ;; (filter (fn [type]
-                                                                                        ;;           (= "uncommitted"
+                                                                                        ;;           (= uncommitted-stream-id
                                                                                         ;;              (:stream-id type)))
                                                                                         ;;         types)
                                                                                         ;; (filter (fn [type]
@@ -3498,15 +3510,20 @@
                                                                                                  (:local-id %)))
                                                                      (scene-graph/find-first-child :can-gain-focus?)
                                                                      (keyboard/set-focused-node!))))))}
-
                 {:name "commit changes"
                  :available? (not (empty? (branch-changes (:branch state))))
                  :key-patterns [[#{:meta} :s]]
                  :run! (fn [_subtree]
-                         (transact! (:stream-db state)
-                                    (->> (branch-changes (:branch state))
-                                         (map (partial stream-entity-ids-to-temporary-ids (:id (:branch state))))))
-                         (swap! state-atom assoc :branch (create-stream-db-branch "uncommitted" (db-common/deref (:stream-db state)))))}
+                         (let [temporary-id-resolution (:temporary-id-resolution (transact! (:stream-db state)
+                                                                                            (->> (branch-changes (:branch state))
+                                                                                                 (map (partial stream-entity-ids-to-temporary-ids (:id (:branch state)))))))]
+                           (swap! state-atom
+                                  assoc
+                                  :branch (create-stream-db-branch uncommitted-stream-id
+                                                                   (db-common/deref (:stream-db state)))
+                                  :entity (unmerged-entity-id-to-merged-stream-id uncommitted-stream-id
+                                                                                  (:entity @state-atom)
+                                                                                  temporary-id-resolution))))}
 
                 {:name "delete focused entity"
                  :available? @focused-entity
@@ -3638,7 +3655,7 @@
                                                 #_(button "commit" (fn []
                                                                      (transact! (:stream-db state)
                                                                                 (branch-changes (:branch state)))
-                                                                     (swap! state-atom assoc :branch (create-stream-db-branch "uncommitted" (:stream-db state)))))
+                                                                     (swap! state-atom assoc :branch (create-stream-db-branch uncommitted-stream-id))))
                                                 #_(text (pr-str (-> state :branch :transaction-log)))
                                                 #_(transaction-log-view (:branch state))
                                                 #_(text (transaction-log/last-transaction-number (:transaction-log (:branch state))))
@@ -3742,7 +3759,7 @@
                                     (create-stream-db-on-disk "stream"
                                                               test-stream-path
                                                               index-definitions))
-        branch (create-stream-db-branch "uncommitted" (db-common/deref stream-db))]
+        branch (create-stream-db-branch uncommitted-stream-id)]
     {:stream-db stream-db
      :branch branch}
 
@@ -3768,7 +3785,7 @@
 
   (let [base (doto (create-dependable-stream-db-in-memory "base" index-definitions)
                (transact! prelude-transaction))
-        branch (create-stream-db-branch "uncommitted" base)]
+        branch (create-stream-db-branch uncommitted-stream-id)]
 
     (transact! branch
                [[:add
@@ -3960,7 +3977,7 @@
                                                                             "health" "temp/health"
                                                                             ;; "koe" "temp/koe2"
                                                                             index-definitions))
-                                               branch (create-stream-db-branch "uncommitted" (db-common/deref stream-db))
+                                               branch (create-stream-db-branch uncommitted-stream-id)
                                                entity {:stream-id "stream" :id 5}]
 
 
@@ -4131,7 +4148,7 @@
                                                                                                 argumentation-schema-transaction)))
                                                                            db)
 
-                                               branch (create-stream-db-branch "uncommitted" (db-common/deref stream-db))
+                                               branch (create-stream-db-branch uncommitted-stream-id (db-common/deref stream-db))
                                                entity {:id 0, :stream-id "base"}
                                                ]
 
@@ -4456,10 +4473,10 @@
                                             "<-")
                                           (label db attribute)))
                                #_[
-                                #_(if (= editor
-                                         (:show-subcolummn-prompt-for-editor @table-view-state-atom))
-                                    [(text "prompt")]
-                                    [])]))
+                                  #_(if (= editor
+                                           (:show-subcolummn-prompt-for-editor @table-view-state-atom))
+                                      [(text "prompt")]
+                                      [])]))
 
                            show-empty-column-prompt? #_(starts-with? table-view-node-id @focused-node-id)
 
@@ -4890,7 +4907,7 @@
   (println "\n\n------------ start -------------\n\n")
   (reset! dev/event-channel-atom
           (application/start-application ;; ui
-            #'notebook-ui
+           #'notebook-ui
            ;; #'hierarchical-table/demo
 
            ;;#'multiplication-table
