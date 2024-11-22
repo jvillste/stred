@@ -1010,7 +1010,7 @@
 
 (defn entity-value-type-view [db value value-view]
   (hor 10
-       (layouts/with-margins 5 0 0 0
+       (layouts/with-margins 0 0 0 0
          (let [type (db-common/value db
                                      value
                                      (prelude :type-attribute))]
@@ -1018,8 +1018,8 @@
                         (text (or (label db type)
                                   (value-string db type))
                               {:color (:background-color theme)})
-                        {:width 30
-                         :height 30})
+                        {:width 40
+                         :height 40})
                       {:fill-color (:symbol-background theme)})))
        value-view))
 
