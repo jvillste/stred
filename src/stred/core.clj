@@ -3519,13 +3519,14 @@
                          (let [temporary-id-resolution (:temporary-id-resolution (transact! (:stream-db state)
                                                                                             (->> (branch-changes (:branch state))
                                                                                                  (map (partial stream-entity-ids-to-temporary-ids (:id (:branch state)))))))]
-                           (swap! state-atom
-                                  assoc
-                                  :branch (create-stream-db-branch uncommitted-stream-id
-                                                                   (db-common/deref (:stream-db state)))
-                                  :entity (unmerged-entity-id-to-merged-stream-id uncommitted-stream-id
-                                                                                  (:entity @state-atom)
-                                                                                  temporary-id-resolution))))}
+                           (when (= uncommitted-stream-id (:stream-id (:entity @state-atom)))
+                             (swap! state-atom
+                                    assoc
+                                    :branch (create-stream-db-branch uncommitted-stream-id
+                                                                     (db-common/deref (:stream-db state)))
+                                    :entity (unmerged-entity-id-to-merged-stream-id uncommitted-stream-id
+                                                                                    (:entity @state-atom)
+                                                                                    temporary-id-resolution)))))}
 
                 {:name "delete focused entity"
                  :available? @focused-entity
