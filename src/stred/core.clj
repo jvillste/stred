@@ -2302,7 +2302,7 @@
                                                                          [:add
                                                                           :tmp/new-attribute
                                                                           (prelude :label)
-                                                                          (:label query-text)]])))}])))]}
+                                                                          query-text]])))}])))]}
                     (layouts/with-margins 0 0 0 0
                       (text (str (str (when reverse?
                                         "<-")
