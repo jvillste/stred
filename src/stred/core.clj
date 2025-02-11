@@ -62,7 +62,7 @@
 
 
 (defn add-color [color delta]
-  (vec (concat (map (comp #(min 255 %)
+  (vec (concat (map (comp #(max 0 (min 255 %))
                           +) color delta)
                (drop (count delta)
                      color))))
@@ -80,14 +80,22 @@
          (add-color [100 0 0 0]
                     [200]))))
 
+(defn gray [value]
+  [value value value])
+
 (def dark-mode (let [text-color [200 200 200 255]
-                     background-color [0 0 0 255]]
+                     background-color [0 0 0 255]
+                     symbol-background [0 100 0 255]]
                  {:background-color background-color
                   :text-color text-color
                   :highlighted-text-color background-color
-                  :symbol-background [0 70 0 255]
+                  :symbol-background-color symbol-background
+                  :symbol-foreground-color text-color #_(add-color symbol-background
+                                                                   (gray 100))
                   :highlighted-background-color (add-color background-color
                                                            [0 140 0])
+                  :selection-background-color (add-color background-color
+                                                         [0 100 0])
                   #_(add-color background-color
                                [0 0 100])
                   :focus-highlight-color (add-color background-color
@@ -872,18 +880,27 @@
        (distinct)))
 
 (defn highlight [content & [{:keys [fill-color] :or {fill-color [240 240 255 255]}}]]
-  (layouts/box 2
+  (layouts/box 3
                (visuals/rectangle-2 :fill-color fill-color
                                     :draw-color nil
                                     :line-width 0
                                     :corner-arc-radius 20)
                content))
 
-(defn highlight-2 [highlight? content]
+(defn highlight-2 [highlight? content & [{:keys [fill-color]
+                                          :or {fill-color (:highlighted-background-color theme)}}]]
   (layouts/box 5
                (visuals/rectangle-2 :fill-color (if highlight?
-                                                  (:highlighted-background-color theme)
+                                                  fill-color
                                                   [0 0 0 0]#_(:background-color theme))
+                                    :draw-color nil
+                                    :line-width 0
+                                    :corner-arc-radius 20)
+               content))
+
+(defn highlight-3 [color content]
+  (layouts/box 5
+               (visuals/rectangle-2 :fill-color color
                                     :draw-color nil
                                     :line-width 0
                                     :corner-arc-radius 20)
@@ -893,7 +910,6 @@
   (condp = type
     (argumentation :statement) (box (layouts/with-minimum-size 40 10 (text "S"))
                                     {:fill-color [200 200 255 255]})
-
     (argumentation :argument) (box (layouts/with-minimum-size 40 10 (text "A"))
                                    {:fill-color [200 255 200 255]})
 
@@ -1019,10 +1035,10 @@
            (highlight (if type
                         (text (or (label db type)
                                   (value-string db type))
-                              {:color (:background-color theme)})
+                              {:color (:symbol-foreground-color theme)})
                         {:width 40
                          :height 40})
-                      {:fill-color (:symbol-background theme)})))
+                      {:fill-color (:symbol-background-color theme)})))
        value-view))
 
 (defn value-view [db value]
@@ -1620,7 +1636,22 @@
                                   (:selected-index state))
                          (item-commands (nth array
                                              (:selected-index state))))
-                       [{:name "cancel insertion"
+                       ;; NOW TODO: remove me
+                       ;; TODO: where should the  selected entities be set to global-state atom?
+                       ;; add root commands to copy selected entities to clipboard
+                       ;; add commadns to array editor entity attribute editor to insert entities from clipboard
+                       [{:name "drop selection anchor"
+                         :available? (not (= (:selected-index state)
+                                             (:anchor-index state)))
+                         :key-patterns [[[#{:control} :space]]]
+                         :run! (fn [_subtree]
+                                 (swap! state-atom assoc :anchor-index (:selected-index state)))}
+                        {:name "raise selection anchor"
+                         :available? (:anchor-index state)
+                         :key-patterns escape-key-pattern-sequences
+                         :run! (fn [_subtree]
+                                 (swap! state-atom dissoc :anchor-index))}
+                        {:name "cancel insertion"
                          :available? (:insertion-index state)
                          :key-patterns escape-key-pattern-sequences
                          :run! (fn [_subtree]
@@ -1747,7 +1778,24 @@
                                                                         allow-array-spreading?
                                                                         item-removal-transaction
                                                                         item-commands)
-                                  item-view (assoc (highlight-2 (= index (:selected-index state))
+                                  item-view (assoc (highlight-3 (cond (= index (:selected-index state))
+                                                                      (:highlighted-background-color theme)
+
+                                                                      (and (:anchor-index state)
+                                                                           (or (and (>= index
+                                                                                        (:anchor-index state))
+                                                                                    (< index
+                                                                                       (:selected-index state)))
+                                                                               (and (<= index
+                                                                                        (:anchor-index state))
+                                                                                    (> index
+                                                                                       (:selected-index state)))))
+                                                                      (:selection-background-color theme)
+
+                                                                      :else
+                                                                      [0 0 0 0]
+                                                                      ;;(:background-color theme)
+                                                                      )
                                                                 {:node [item-view db value-entity]
                                                                  :local-id [:value index]
                                                                  :mouse-event-handler [focus-on-click-mouse-event-handler]
@@ -1989,7 +2037,6 @@
                  :label query-text}])))
 
    (fn item-view [db entity]
-     [outline-view db entity lens-map]
      [outline-view
       db
       entity
@@ -4170,7 +4217,7 @@
 
                                            {:stream-db stream-db
                                             :branch branch
-                                            :entity  {:stream-id "uoa" :id 303}
+                                            :entity  {:stream-id "uoa" :id 6}
                                             :previous-entities []
                                             :undoed-transactions '()
                                             :show-help? false
