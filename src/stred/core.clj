@@ -951,7 +951,7 @@
 
 (defn focus-highlight [child]
   (highlight child
-             {:fill-color (if (keyboard/sub-component-is-focused?)
+             {:fill-color (if (keyboard/sub-component-is-in-focus?)
                             (:focus-highlight-color theme)
                             (:background-color theme))}))
 
@@ -1155,7 +1155,7 @@
                  :text given-text
                  :given-text given-text))
 
-        (if (keyboard/sub-component-is-focused?)
+        (if (keyboard/sub-component-is-in-focus?)
           [focus-highlight (-> (box (layouts/with-minimum-size 80 nil
                                       (bare-text-editor-2 (str (:text state))
                                                           (fn on-change [old-state new-state]
@@ -1502,7 +1502,7 @@
                                                                      :selected-index 0
                                                                      :text new-text)))))
                                       (assoc :local-id :prompt-editor))]
-                 (when (and (keyboard/sub-component-is-focused?)
+                 (when (and (keyboard/sub-component-is-in-focus?)
                             (not (empty? the-commands))
                             (:show-dropdown? state)
                             #_(not (empty? (:commands state))))
