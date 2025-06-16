@@ -3779,9 +3779,10 @@
                                                        (header "Uncommitted changes")
                                                        #_(transaction-view (:branch state) (branch-changes (:branch state)) #_the-branch-changes)
 
-                                                       (ver 0 (map (partial change-view (:branch state))
-                                                                   (sort comparator/compare-datoms
-                                                                         (remove stred-change? (branch-changes (:branch state))))))))
+                                                       (ver 0 (->> (branch-changes (:branch state))
+                                                                   (remove stred-change?)
+                                                                   (sort comparator/compare-datoms)
+                                                                   (map (partial change-view (:branch state)))))))
 
                                                 ;; (header "Undoed transactions")
                                                 ;; (ver 30 (for [undoed-transaction (:undoed-transactions state)]
