@@ -9,5 +9,6 @@
                  [com.clojure-goes-fast/clj-async-profiler "1.0.4"]
                  [vvvvalvalval/scope-capture "0.3.3"]]
   :repl-options {:init-ns stred.core}
-  :jvm-opts ["-Djdk.attach.allowAttachSelf" ;; for clj-async-profiler
+  :jvm-opts ["-Xmx1g"
+             "-Djdk.attach.allowAttachSelf" ;; for clj-async-profiler
              "-XX:-OmitStackTraceInFastThrow"])
