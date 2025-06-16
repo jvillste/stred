@@ -490,8 +490,8 @@
 
 (defn hierarchical-table [headers rows]
   {:type ::hierarchical-table
-   :children (concat (flatten-headers headers)
-                     (flatten-rows rows))
+   :children (vec (concat (flatten-headers headers)
+                          (flatten-rows rows)))
    :get-size hierarchical-table-get-size
    :give-space hierarchical-table-give-space
    :make-layout hierarchical-table-make-layout})
