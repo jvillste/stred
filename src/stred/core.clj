@@ -4940,16 +4940,16 @@
                                                                           (table-view-header-row state-atom value-entities column-array-editor-state-atom db table-lens true))
                                                                   [[{:width 0
                                                                      :height 0}]])
-                                                                (concat (when (or (empty? value-entities)
-                                                                                  (:adding? @state-atom))
-                                                                          [[(table-view-row-prompt value-entities state-atom table-view-node-id db reverse? attribute entity)]])
+                                                                (doall (concat (when (or (empty? value-entities)
+                                                                                         (:adding? @state-atom))
+                                                                                 [[(table-view-row-prompt value-entities state-atom table-view-node-id db reverse? attribute entity)]])
 
-                                                                        (map-indexed (fn [index value-entity]
-                                                                                       (table-view-value-row index state db value-entity lens-map shared-lens add-lens state-atom entity attribute reverse? table-lens (:insertion-index @column-array-editor-state-atom)))
-                                                                                     (take page-size
-                                                                                           (drop (* page-size
-                                                                                                    (:page state))
-                                                                                                 value-entities)))))))))))
+                                                                               (map-indexed (fn [index value-entity]
+                                                                                              (table-view-value-row index state db value-entity lens-map shared-lens add-lens state-atom entity attribute reverse? table-lens (:insertion-index @column-array-editor-state-atom)))
+                                                                                            (take page-size
+                                                                                                  (drop (* page-size
+                                                                                                           (:page state))
+                                                                                                        value-entities))))))))))))
 
 (defn table-demo []
   (let [db (create-dependable-stream-db-in-memory "base" index-definitions)
