@@ -949,18 +949,6 @@
 (defn open-entity! [state-atom entity-id & [{:keys [node-id]}]]
   (swap! state-atom (partial open-entity entity-id node-id)))
 
-(defn focus-highlight-keyboard-event-handler [state-atom _subtree event]
-  (cond (and (= :descent (:phon-targetase event))
-             (= :focus-gained (:type event)))
-        (swap! state-atom assoc :focused? true)
-
-
-        (and (= :descent (:phase event))
-             (= :focus-lost (:type event)))
-        (swap! state-atom assoc :focused? false))
-
-  event)
-
 (defn focus-highlight [child]
   (highlight child
              {:fill-color (if (keyboard/sub-component-is-in-focus?)
