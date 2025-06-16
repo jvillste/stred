@@ -3586,6 +3586,7 @@
                          (let [temporary-id-resolution (:temporary-id-resolution (transact! (:stream-db state)
                                                                                             (->> (branch-changes (:branch state))
                                                                                                  (map (partial stream-entity-ids-to-temporary-ids (:id (:branch state)))))))]
+                           (swap! state-atom assoc :branch (create-stream-db-branch "uncommitted" (db-common/deref (:stream-db state))))
                            (when (= uncommitted-stream-id (:stream-id (:entity @state-atom)))
                              (swap! state-atom
                                     assoc
