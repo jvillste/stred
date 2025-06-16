@@ -4236,7 +4236,7 @@
                                                                            db)
 
                                                branch (create-stream-db-branch uncommitted-stream-id (db-common/deref stream-db))
-                                               entity {:id 0, :stream-id "base"}]
+                                               ]
 
                                            ;;                                           (common/transact! branch the-branch-changes)
 
