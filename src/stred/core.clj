@@ -4185,6 +4185,21 @@
                                              (prelude :label)
                                              :?label]]))))
 
+
+  ;; notebooks
+
+  (distinct (let [db (create-stream-db-on-disk "uoa" "temp/uses-of-argument"
+                                               index-definitions)]
+              (into []
+                    (query/reducible-query [(-> db :indexes :eav :collection)
+                                            [:?entity
+                                             (prelude :type-attribute)
+                                             (stred :notebook)]
+
+                                            [:?entity
+                                             (prelude :label)
+                                             :?label]]))))
+
   (doto (create-dependable-stream-db-in-memory "base" index-definitions)
     (transact! [[:add
                  {:stream-id "base", :id 0}
