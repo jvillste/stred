@@ -3405,7 +3405,7 @@
                         (open-entity! state-atom notebook))})))])
 
 (defn scroll-pane [local-id x y child]
-;;  child
+  ;;  child
   #_{:children [child]
      :x x
      :y y
