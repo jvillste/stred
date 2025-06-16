@@ -4248,7 +4248,8 @@
 
                                            {:stream-db stream-db
                                             :branch branch
-                                            :entity  {:stream-id "uoa" :id 6}
+                                            :entity  #_{:stream-id "uoa" :id 6}  ;; usees of argument
+                                            {:id 39, :stream-id "uoa"} ;; health
                                             :previous-entities []
                                             :undoed-transactions '()
                                             :show-help? false
