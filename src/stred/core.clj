@@ -965,16 +965,24 @@
     (keyboard/set-focused-node! node))
   event)
 
-(defn entity-symbol [state-atom entity-type entity-id]
+(defn entity-symbol [entity-type entity-id]
   [focus-highlight (-> (type-symbol entity-type)
-                       (assoc :mouse-event-handler [on-click-mouse-event-handler (partial open-entity! state-atom entity-id)]
+                       (assoc :mouse-event-handler [on-click-mouse-event-handler (partial open-entity! global-state-atom entity-id)]
                               :entity entity-id
                               :can-gain-focus? true))])
 
-(defn- entity-view [db state-atom entity-id]
+(defn entity-view [db state-atom entity-id]
   (chor 10
         (entity-symbol state-atom
                        (db-common/value db
+                                        entity-id
+                                        (prelude :type-attribute))
+                       entity-id)
+        (text (label db entity-id))))
+
+(defn entity-view-2 [db entity-id]
+  (chor 10
+        (entity-symbol (db-common/value db
                                         entity-id
                                         (prelude :type-attribute))
                        entity-id)
@@ -2179,10 +2187,10 @@
            sequence-2)
      sequence-1))
 
-(defn entity-attribute-editor [_db _entity _attribute _lens-map & _options]
+(defn entity-attribute-editor-base [_db _entity _attribute _entity-view & _options]
   (let [state-atom (dependable-atom/atom "entity-attribute-editor-state"
                                          {:page 0})]
-    (fn entity-attribute-editor [db entity attribute lens-map & [{:keys [reverse? add-lens shared-lens]}]]
+    (fn entity-attribute-editor-base [db entity attribute entity-view & [{:keys [reverse? new-entity-type]}]]
       (let [state @state-atom
             value-entities (sort-entity-ids (if reverse?
                                               (concat (common/entities db attribute entity)
@@ -2197,14 +2205,7 @@
                                                  page-size))))))
                  (map-indexed (fn [index value-entity]
                                 (highlight-2 (= index (:selected-index state))
-                                             {:node [outline-view
-                                                     db
-                                                     value-entity
-                                                     (or (get lens-map
-                                                              value-entity)
-                                                         shared-lens)
-                                                     {:add-lens (fn []
-                                                                  (add-lens value-entity))}]
+                                             {:node [entity-view value-entity]
                                               :mouse-event-handler [focus-on-click-mouse-event-handler]
                                               :local-id [:value index]
                                               :entity value-entity
@@ -2247,11 +2248,15 @@
                                                     (focus-on-new-entity new-value-entity))
                                                   (swap! state-atom assoc :adding? false))})
 
-                                       [{:name "Create new entity"
+                                       [{:name (if new-entity-type
+                                                 (str "Create new " (label db new-entity-type))
+                                                 "Create new entity")
                                          :available? true
                                          :key-patterns  [[#{:control} :c] [#{:control} :c]]
                                          :run! (fn [_subtree]
                                                  (let [temporary-id-resolution (:temporary-id-resolution (transact! db (concat [[:add :tmp/new-entity (prelude :label) query-text]]
+                                                                                                                               (when new-entity-type
+                                                                                                                                 [[:add :tmp/new-entity (prelude :type-attribute) new-entity-type]])
                                                                                                                                (if reverse?
                                                                                                                                  [[:add :tmp/new-entity attribute entity]]
                                                                                                                                  [[:add entity attribute :tmp/new-entity]]))))
@@ -2265,6 +2270,22 @@
                                                                      attribute
                                                                      value-entities
                                                                      reverse?)))))))
+
+(defn entity-attribute-editor [db entity attribute lens-map & [{:keys [add-lens shared-lens] :as options}]]
+  [entity-attribute-editor-base
+   db
+   entity
+   attribute
+   (fn [value-entity]
+     [outline-view
+      db
+      value-entity
+      (or (get lens-map
+               value-entity)
+          shared-lens)
+      {:add-lens (fn []
+                   (add-lens value-entity))}])
+   options])
 
 
 (defn empty-attribute-prompt [db entity attribute reverse?]
