@@ -2187,7 +2187,7 @@
            sequence-2)
      sequence-1))
 
-(defn entity-attribute-editor-base [_db _entity _attribute _entity-view & _options]
+(defn entity-attribute-editor-base [_db _entity _attribute _entity-view & [_options]]
   (let [state-atom (dependable-atom/atom "entity-attribute-editor-state"
                                          {:page 0})]
     (fn entity-attribute-editor-base [db entity attribute entity-view & [{:keys [reverse? new-entity-type]}]]
@@ -3562,32 +3562,8 @@
                  :run! (fn [_subtree]
                          (open-entity! state-atom
                                        @focused-entity
-                                       {:node-id @keyboard/focused-node}))}
+                                       {:node-id (:id @keyboard/focused-node)}))}
 
-                {:name "create supporting argument"
-                 :available? true
-                 :key-patterns [[#{:control} :c] [#{:control} :a]]
-                 :run! (fn [_subtree]
-
-                         (let [new-argument-id (-> (transact! (:branch state)
-                                                              [[:add
-                                                                :tmp/new-argument
-                                                                (prelude :type-attribute)
-                                                                (argumentation :argument)]
-
-                                                               [:add
-                                                                :tmp/new-argument
-                                                                (argumentation :supports)
-                                                                (:entity state)]])
-                                                   :temporary-id-resolution
-                                                   :tmp/new-argument)]
-
-                           (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                (->> scene-graph
-                                                                     (scene-graph/find-first #(= new-argument-id
-                                                                                                 (:local-id %)))
-                                                                     (scene-graph/find-first-child :can-gain-focus?)
-                                                                     (keyboard/set-focused-node!))))))}
                 {:name "commit changes"
                  :available? (not (empty? (branch-changes (:branch state))))
                  :key-patterns [[#{:meta} :s]]
@@ -5340,5 +5316,3 @@
             [:add argument :premises [statement-2]]]
            (db-common/changes-to-remove-entity (db-common/deref stream-db)
                                                statement-1)))))
-
-;; TODO: keep track of focused node in entity history so that navigating back reatins focus
