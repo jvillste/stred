@@ -2920,11 +2920,12 @@
                    (:character event)
                    (not (= :enter (:key event)))
                    (not (= :escape (:key event))))
-            (if (= :back-space (:key event))
-              (swap! state-atom update :text (fn [old-text]
-                                               (subs old-text 0 (max 0
-                                                                     (dec (count old-text))))))
-              (swap! state-atom update :text str (:character event)))
+            (do (if (= :back-space (:key event))
+                  (swap! state-atom update :text (fn [old-text]
+                                                   (subs old-text 0 (max 0
+                                                                         (dec (count old-text))))))
+                  (swap! state-atom update :text str (:character event)))
+                :stop-propagation)
             event))))))
 
 (defn command-handler [_show-help? _child]
