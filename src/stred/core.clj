@@ -3661,10 +3661,15 @@
                                                         middle-scroll-y))))}]}))
 
 
-(comment
-  (scene-graph/path-to the-current-scene-graph
-                       the-focused-node-id)
-  ) ;; TODO: remove me
+(defn uncommitted-changes [branch]
+  (ver 0
+       (header "Uncommitted changes")
+       #_(transaction-view (:branch state) (branch-changes (:branch state)) #_the-branch-changes)
+
+       (ver 0 (->> (branch-changes branch)
+                   (remove stred-change?)
+                   (sort comparator/compare-datoms)
+                   (map (partial change-view branch))))))
 
 (defn root-view [state-atom]
   #_(logga.core/write (pr-str 'event-cache
@@ -3782,16 +3787,7 @@
 
                                                 (when (and (not (:show-help? state))
                                                            (:show-uncommitted-changes? state))
-
-
-                                                  (ver 0
-                                                       (header "Uncommitted changes")
-                                                       #_(transaction-view (:branch state) (branch-changes (:branch state)) #_the-branch-changes)
-
-                                                       (ver 0 (->> (branch-changes (:branch state))
-                                                                   (remove stred-change?)
-                                                                   (sort comparator/compare-datoms)
-                                                                   (map (partial change-view (:branch state)))))))
+                                                  [uncommitted-changes (:branch state)])
 
                                                 ;; (header "Undoed transactions")
                                                 ;; (ver 30 (for [undoed-transaction (:undoed-transactions state)]
