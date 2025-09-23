@@ -540,7 +540,6 @@
   ;;                       (cell "value 2")]])
   )
 
-
-(when @stred.dev/event-channel-atom
-  (clojure.core.async/>!! @stred.dev/event-channel-atom
-                          {:type :redraw}))
+#_(when @stred.dev/event-channel-atom
+    (clojure.core.async/>!! @stred.dev/event-channel-atom
+                            {:type :redraw}))

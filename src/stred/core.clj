@@ -22,29 +22,24 @@
    [clojure.set :as set]
    [clojure.string :as string]
    [clojure.test :refer :all]
+   [clojure.walk :as walk]
    [flow-gl.graphics.font :as font]
    [flow-gl.gui.keyboard :as keyboard]
    [flow-gl.gui.scene-graph :as scene-graph]
    [flow-gl.gui.visuals :as visuals]
    [fungl.application :as application]
+   [fungl.cache :as cache]
    [fungl.component.text-area :as text-area]
+   [fungl.depend :as depend]
    [fungl.dependable-atom :as dependable-atom]
+   [fungl.derivation :as derivation]
    [fungl.layout :as layout]
    [fungl.layouts :as layouts]
    [fungl.view-compiler :as view-compiler]
    [me.raynes.fs :as fs]
    [medley.core :as medley]
-   [argumentica.db.db :as db]
-   [fungl.swing.root-renderer :as root-renderer]
-   [fungl.cache :as cache]
-   [fungl.component :as component]
-   [fungl.derivation :as derivation]
-   [flow-gl.tools.trace :as trace]
-   [clojure.walk :as walk]
-   [argumentica.db.common :as common]
-   [stred.hierarchical-table :as hierarchical-table]
    [stred.dev :as dev]
-   [fungl.depend :as depend]))
+   [stred.hierarchical-table :as hierarchical-table]))
 
 (def ^:dynamic global-state-atom)
 
@@ -207,7 +202,7 @@
                                                           (merged-sorted/->MergedSorted (-> stream-db :indexes key :collection)
                                                                                         (btree-collection/create-in-memory  {:create-atom dependable-atom/atom})
                                                                                         last-upstream-transaction-number))
-                                                        (map common/index-to-index-definition (vals (:indexes stream-db))))}))
+                                                        (map db-common/index-to-index-definition (vals (:indexes stream-db))))}))
 
 (defn create-stream-db-branch [branch-stream-id upstream-stream-db-value]
   (assert (db-common/db-value? upstream-stream-db-value))
@@ -1636,6 +1631,71 @@
        (scene-graph/find-first-breath-first :can-gain-focus?)
        (keyboard/set-focused-node!)))
 
+
+(defn drop-selection-anchor-array-editor-command [state state-atom]
+  {:name "drop selection anchor"
+                         :available? (not (= (:selected-index state)
+                                             (:anchor-index state)))
+                         :key-patterns [[[#{:control} :space]]]
+                         :run! (fn [_subtree]
+                                 (swap! state-atom assoc :anchor-index (:selected-index state)))})
+
+(defn reaise-selection-anchor-array-editor-command [state state-atom]
+  {:name "raise selection anchor"
+                         :available? (:anchor-index state)
+                         :key-patterns escape-key-pattern-sequences
+                         :run! (fn [_subtree]
+                                 (swap! state-atom dissoc :anchor-index))})
+
+(defn delete-selected-array-editor-command [state array db item-removal-transaction entity attribute state-atom]
+  {:name "delete selected"
+   :available? (and (:selected-index state)
+                    (not (:insertion-index state))
+                    (not (empty? array)))
+   :key-patterns [[#{:control} :d]]
+   :run! (fn [subtree]
+           (transact! db (concat (item-removal-transaction (nth array (:selected-index state)))
+                                 [[:set entity attribute (drop-index (:selected-index state)
+                                                                     array)]]))
+           (if (= 1 (count array))
+             (swap! state-atom dissoc :selected-index)
+             (swap! state-atom update :selected-index #(min % (- (count array)
+                                                                 2))))
+
+           (when (< 1 (count array))
+             (keyboard/handle-next-scene-graph! (fn [scene-graph]
+                                                  (->> (:id subtree)
+                                                       (drop-last)
+                                                       (scene-graph/id-to-local-id-path)
+                                                       (scene-graph/get-in-path scene-graph)
+                                                       (scene-graph/find-first-child #(= [:value (min (:selected-index state)
+                                                                                                      (- (count array)
+                                                                                                         2))]
+                                                                                         (:local-id %)))
+                                                       (keyboard/set-focused-node!))))))})
+
+(defn move-backward-array-editor-command [state db entity attribute array state-atom]
+  {:name "move backward"
+   :available? (and (:selected-index state)
+                    (< 0 (:selected-index state)))
+   :key-patterns [[#{:meta} :p]]
+   :run! (fn [subtree]
+           (transact! db [[:set entity attribute (vec (move-left (:selected-index state)
+                                                                 array))]])
+           (swap! state-atom update :selected-index dec))})
+
+(defn move-forward-array-editor-command [state array db entity attribute state-atom]
+  {:name "move forward"
+   :available? (and (:selected-index state)
+                    (< (:selected-index state)
+                       (dec (count array))))
+   :key-patterns [[#{:meta} :n]]
+   :run! (fn [subtree]
+           (transact! db [[:set entity attribute (vec (move-right (:selected-index state)
+                                                                  array))]])
+
+           (swap! state-atom update :selected-index inc))})
+
 (defn array-editor-command-set [state-atom db entity attribute allow-array-spreading? item-removal-transaction item-commands]
   (let [state @state-atom
         array (db-common/value db entity attribute)]
@@ -1665,32 +1725,6 @@
                          :run! (fn [_subtree]
                                  (swap! state-atom dissoc :insertion-index))}
 
-                        {:name "delete selected"
-                         :available? (and (:selected-index state)
-                                          (not (:insertion-index state))
-                                          (not (empty? array)))
-                         :key-patterns [[#{:control} :d]]
-                         :run! (fn [subtree]
-                                 (transact! db (concat (item-removal-transaction (nth array (:selected-index state)))
-                                                       [[:set entity attribute (drop-index (:selected-index state)
-                                                                                           array)]]))
-                                 (if (= 1 (count array))
-                                   (swap! state-atom dissoc :selected-index)
-                                   (swap! state-atom update :selected-index #(min % (- (count array)
-                                                                                       2))))
-
-                                 (when (< 1 (count array))
-                                   (keyboard/handle-next-scene-graph! (fn [scene-graph]
-                                                                        (->> (:id subtree)
-                                                                             (drop-last)
-                                                                             (scene-graph/id-to-local-id-path)
-                                                                             (scene-graph/get-in-path scene-graph)
-                                                                             (scene-graph/find-first-child #(= [:value (min (:selected-index state)
-                                                                                                                            (- (count array)
-                                                                                                                               2))]
-                                                                                                               (:local-id %)))
-                                                                             (keyboard/set-focused-node!))))))}
-
                         {:name "insert before"
                          :available? (:selected-index state)
                          :key-patterns [[#{:control :shift} :i]]
@@ -1715,27 +1749,7 @@
                                               (dissoc :selected-index))))
                                  (keyboard/handle-next-scene-graph! (fn [scene-graph]
                                                                       (focus-insertion-prompt scene-graph
-                                                                                              (drop-last (:id subtree))))))}
-
-                        {:name "move backward"
-                         :available? (and (:selected-index state)
-                                          (< 0 (:selected-index state)))
-                         :key-patterns [[#{:meta} :p]]
-                         :run! (fn [subtree]
-                                 (transact! db [[:set entity attribute (vec (move-left (:selected-index state)
-                                                                                       array))]])
-                                 (swap! state-atom update :selected-index dec))}
-
-                        {:name "move forward"
-                         :available? (and (:selected-index state)
-                                          (< (:selected-index state)
-                                             (dec (count array))))
-                         :key-patterns [[#{:meta} :n]]
-                         :run! (fn [subtree]
-                                 (transact! db [[:set entity attribute (vec (move-right (:selected-index state)
-                                                                                        array))]])
-
-                                 (swap! state-atom update :selected-index inc))}]
+                                                                                              (drop-last (:id subtree))))))}]
                        (when allow-array-spreading?
                          [{:name "spread array"
                            :available? true
@@ -1743,7 +1757,11 @@
                            :run! (fn [_subtree]
                                    (transact! db (into [[:remove entity attribute array]]
                                                        (for [value array]
-                                                         [:add entity attribute value]))))}]))}))
+                                                         [:add entity attribute value]))))}])
+
+                       (delete-selected-array-editor-command state array db item-removal-transaction entity attribute state-atom)
+                       (move-backward-array-editor-command state db entity attribute array state-atom)
+                       (move-forward-array-editor-command state array db entity attribute state-atom))}))
 
 (defn focus-gained? [event]
   (and (= :on-target (:phase event))
@@ -1874,6 +1892,7 @@
                                  allow-array-spreading?
                                  item-removal-transaction
                                  item-commands)))))
+
 
 ;; (defn entity-array-attribute-editor-command-set [state-atom db entity attribute]
 ;;   (let [state @state-atom
@@ -2095,10 +2114,10 @@
                  :key-patterns [[#{:control} :d]]
                  :run! (fn [subtree]
                          (transact! db (if reverse?
-                                         (->> (concat (common/changes-to-remove-entity-references db entity)
-                                                      (common/changes-to-remove-sequence-references db entity))
+                                         (->> (concat (db-common/changes-to-remove-entity-references db entity)
+                                                      (db-common/changes-to-remove-sequence-references db entity))
                                               (filter (fn [change]
-                                                        (= (common/change-entity change)
+                                                        (= (db-common/change-entity change)
                                                            (nth values (:selected-index state))))))
                                          [[:remove entity attribute (nth values
                                                                          (:selected-index state))]]))
@@ -2121,7 +2140,7 @@
                  :key-patterns [[#{:control} :a]]
                  :run! (fn [_subtree]
                          (transact! db (into [[:add entity attribute (vec values)]]
-                                             (common/changes-to-remove-entity-property (common/deref db) entity attribute))))}
+                                             (db-common/changes-to-remove-entity-property (db-common/deref db) entity attribute))))}
 
                 {:name "insert"
                  :available? true
@@ -2193,9 +2212,9 @@
     (fn entity-attribute-editor-base [db entity attribute entity-view & [{:keys [reverse? new-entity-type]}]]
       (let [state @state-atom
             value-entities (sort-entity-ids (if reverse?
-                                              (concat (common/entities db attribute entity)
-                                                      (common/entities-referring-with-sequence db entity))
-                                              (common/values db entity attribute)))
+                                              (concat (db-common/entities db attribute entity)
+                                                      (db-common/entities-referring-with-sequence db entity))
+                                              (db-common/values db entity attribute)))
             entity-attribute-editor-node-id view-compiler/id]
         (-> (ver 0
                  (when (< page-size (count value-entities))
@@ -2403,13 +2422,13 @@
                                          (swap! state-atom assoc :show-attribute-prompt? false))}]}})))
 
 (defn available-lens-editor-items [query-text db lens entities]
-  (let [existing-attributes-set (->> (mapcat #(common/entity-attributes db %)
+  (let [existing-attributes-set (->> (mapcat #(db-common/entity-attributes db %)
                                              entities)
                                      #_(remove (fn [attribute]
                                                  (= "stred" (:stream-id attribute))))
                                      (set))
-        existing-reverse-attributes-set (->> (mapcat #(concat (common/reverse-entity-attributes db %)
-                                                              (common/entity-sequence-reference-attributes db %))
+        existing-reverse-attributes-set (->> (mapcat #(concat (db-common/reverse-entity-attributes db %)
+                                                              (db-common/entity-sequence-reference-attributes db %))
                                                      entities)
                                              #_(remove (fn [attribute]
                                                          (= "stred" (:stream-id attribute))))
@@ -2420,18 +2439,18 @@
                              (or (empty? query-text)
                                  (string/includes? (string/lower-case (label db attribute))
                                                    (string/lower-case query-text))))
-        visible-editors (common/value db lens (stred :editors))
+        visible-editors (db-common/value db lens (stred :editors))
         visible-attributes-set (->> visible-editors
                                     (remove (fn [editor]
-                                              (common/value db editor (stred :reverse?))))
+                                              (db-common/value db editor (stred :reverse?))))
                                     (map (fn [editor]
-                                           (common/value db editor (stred :attribute))))
+                                           (db-common/value db editor (stred :attribute))))
                                     (into #{}))
         visible-reverse-attributes-set (->> visible-editors
                                             (filter (fn [editor]
-                                                      (common/value db editor (stred :reverse?))))
+                                                      (db-common/value db editor (stred :reverse?))))
                                             (map (fn [editor]
-                                                   (common/value db editor (stred :attribute))))
+                                                   (db-common/value db editor (stred :attribute))))
                                             (into #{}))]
     (concat (for [attribute (remove visible-attributes-set
                                     (filter matched-attribute?
@@ -2540,7 +2559,7 @@
                               (stred :editors)
 
                               (fn item-removal-transaction [editor]
-                                (common/changes-to-remove-component-tree (common/deref db)
+                                (db-common/changes-to-remove-component-tree (db-common/deref db)
                                                                          editor))
 
                               (fn new-item-transaction [new-item]
@@ -2574,12 +2593,12 @@
                                                                                                {(stred :reverse?) true}))))})
                               (fn available-items [query-text]
                                 (available-lens-editor-items query-text db lens [entity])
-                                #_(let [existing-attributes-set (->> (common/entity-attributes db entity)
+                                #_(let [existing-attributes-set (->> (db-common/entity-attributes db entity)
                                                                      #_(remove (fn [attribute]
                                                                                  (= "stred" (:stream-id attribute))))
                                                                      (set))
-                                        existing-reverse-attributes-set (->> (concat (common/reverse-entity-attributes db entity)
-                                                                                     (common/entity-sequence-reference-attributes db entity))
+                                        existing-reverse-attributes-set (->> (concat (db-common/reverse-entity-attributes db entity)
+                                                                                     (db-common/entity-sequence-reference-attributes db entity))
                                                                              #_(remove (fn [attribute]
                                                                                          (= "stred" (:stream-id attribute))))
                                                                              (set))
@@ -2589,18 +2608,18 @@
                                                              (or (empty? query-text)
                                                                  (string/includes? (string/lower-case (label db attribute))
                                                                                    (string/lower-case query-text))))
-                                        visible-editors (common/value db lens (stred :editors))
+                                        visible-editors (db-common/value db lens (stred :editors))
                                         visible-attributes-set (->> visible-editors
                                                                     (remove (fn [editor]
-                                                                              (common/value db editor (stred :reverse?))))
+                                                                              (db-common/value db editor (stred :reverse?))))
                                                                     (map (fn [editor]
-                                                                           (common/value db editor (stred :attribute))))
+                                                                           (db-common/value db editor (stred :attribute))))
                                                                     (into #{}))
                                         visible-reverse-attributes-set (->> visible-editors
                                                                             (filter (fn [editor]
-                                                                                      (common/value db editor (stred :reverse?))))
+                                                                                      (db-common/value db editor (stred :reverse?))))
                                                                             (map (fn [editor]
-                                                                                   (common/value db editor (stred :attribute))))
+                                                                                   (db-common/value db editor (stred :attribute))))
                                                                             (into #{}))]
                                     (concat (for [attribute (remove visible-attributes-set
                                                                     (filter matched-attribute?
@@ -3177,7 +3196,7 @@
                                                                                                              (prelude :type-attribute) (stred :outline-view)
                                                                                                              (stred :lens) {:dali/id :tmp/new-lens}
                                                                                                              (stred :entity) @focused-entity})
-                                                                      [[:set notebook (stred :views) (vec (conj (common/value db
+                                                                      [[:set notebook (stred :views) (vec (conj (db-common/value db
                                                                                                                               notebook
                                                                                                                               (stred :views))
                                                                                                                 :tmp/new-view))]])))}]}
@@ -3191,7 +3210,7 @@
                            (stred :views)
 
                            (fn item-removal-transaction [view]
-                             (common/changes-to-remove-component-tree (common/deref db)
+                             (db-common/changes-to-remove-component-tree (db-common/deref db)
                                                                       view))
 
                            (fn new-item-transaction [new-item]
@@ -3227,7 +3246,7 @@
                                        :available? (constantly true)
                                        :key-patterns [[#{:control} :c] [#{:control} :c]]}]
                                      (for [[index type] (map-indexed vector
-                                                                     (into [] (let [types (common/entities-from-ave (common/index db :ave)
+                                                                     (into [] (let [types (db-common/entities-from-ave (db-common/index db :ave)
                                                                                                                     (prelude :type-attribute)
                                                                                                                     (prelude :type-type))]
                                                                                 (concat (remove (fn [type]
@@ -3308,12 +3327,12 @@
                           [:add :tmp/id-1 {:stream-id "stred", :id 12} :tmp/id-2]})
 
 (defn transaction-roots [transaction]
-  (set/difference (set (map common/change-entity transaction))
+  (set/difference (set (map db-common/change-entity transaction))
                   (set (mapcat (fn [value]
                                  (if (vector? value)
                                    value
                                    [value]))
-                               (map common/change-value transaction)))))
+                               (map db-common/change-value transaction)))))
 
 (deftest test-transaction-roots
   (is (= #{:a}
@@ -3328,7 +3347,7 @@
   ;; TODO: visualize remvoed propositions
 
   (let [transaction (remove (fn [change]
-                              (= :remove (common/change-operator change)))
+                              (= :remove (db-common/change-operator change)))
                             transaction)]
     (ver 10
          (value-view db root)
@@ -3336,9 +3355,9 @@
            (ver 10
                 (for [attribute (->> transaction
                                      (filter (fn [change]
-                                               (= (common/change-entity change)
+                                               (= (db-common/change-entity change)
                                                   root)))
-                                     (map common/change-attribute)
+                                     (map db-common/change-attribute)
                                      (distinct))]
                   (hor 10
                        (layouts/with-margins 0 0 0 0
@@ -3351,12 +3370,12 @@
                        (ver 10
                             (for [value (->> transaction
                                              (filter (fn [change]
-                                                       (= (common/change-entity change)
+                                                       (= (db-common/change-entity change)
                                                           root)))
                                              (filter (fn [change]
-                                                       (= (common/change-attribute change)
+                                                       (= (db-common/change-attribute change)
                                                           attribute)))
-                                             (map common/change-value))]
+                                             (map db-common/change-value))]
                               (cond (string? value)
                                     (text (pr-str value))
 
@@ -3378,7 +3397,7 @@
 (defn transaction-view [db transaction]
   (ver 10
        (for [root (set/union (transaction-roots transaction)
-                             #_(set (filter temporary-ids/temporary-id? (map common/change-entity transaction))))]
+                             #_(set (filter temporary-ids/temporary-id? (map db-common/change-entity transaction))))]
          (transaction-branch db root #{} transaction))))
 
 (comment
@@ -3414,13 +3433,13 @@
                                                             (string/lower-case query-text))
                                           true)
                                         true))
-                                    (common/entities db (prelude :type-attribute) (stred :notebook)))]
+                                    (db-common/entities db (prelude :type-attribute) (stred :notebook)))]
 
                {:view (value-view db notebook)
                 #_(text (str "notebook: " (label db notebook)
-                             #_(or (label db (common/value db (first (common/value db notebook (stred :views)))
+                             #_(or (label db (db-common/value db (first (db-common/value db notebook (stred :views)))
                                                            (stred :entity)))
-                                   (common/value db notebook (stred :views)))))
+                                   (db-common/value db notebook (stred :views)))))
                 :available? true
                 ;;                   :key-patterns  [[#{:control} :enter]]
                 :run! (fn [_subtree]
@@ -4220,7 +4239,7 @@
                                                branch (create-stream-db-branch uncommitted-stream-id (db-common/deref stream-db))
                                                ]
 
-                                           ;;                                           (common/transact! branch the-branch-changes)
+                                           ;;                                           (db-common/transact! branch the-branch-changes)
 
 
                                            #_(transact! branch
@@ -4468,7 +4487,7 @@
                  :key-patterns [[#{:control :meta} :a]]
                  :run! (fn [_subtree]
                          (transact! db (into [[:add entity attribute (vec values)]]
-                                             (common/changes-to-remove-entity-property (common/deref db) entity attribute))))}
+                                             (db-common/changes-to-remove-entity-property (db-common/deref db) entity attribute))))}
 
                 {:name "insert"
                  :available? true
@@ -4582,7 +4601,7 @@
                            false
 
                            (fn item-removal-transaction [editor]
-                             (common/changes-to-remove-component-tree (common/deref db)
+                             (db-common/changes-to-remove-component-tree (db-common/deref db)
                                                                       editor))
                            (fn item-commands [editor]
                              (let [range (db-common/value-in db
@@ -4690,7 +4709,7 @@
 ;;                                false
 
 ;;                                (fn item-removal-transaction [editor]
-;;                                  (common/changes-to-remove-component-tree (common/deref db)
+;;                                  (db-common/changes-to-remove-component-tree (db-common/deref db)
 ;;                                                                           editor))
 ;;                                (fn item-commands [editor]
 ;;                                  (let [range (db-common/value-in db
@@ -4712,9 +4731,9 @@
 
 (defn- value-entities [reverse? db attribute entity]
   (if reverse?
-    (concat (common/entities db attribute entity)
-            (common/entities-referring-with-sequence db entity))
-    (common/values db entity attribute)))
+    (concat (db-common/entities db attribute entity)
+            (db-common/entities-referring-with-sequence db entity))
+    (db-common/values db entity attribute)))
 
 (defn- table-view-row-prompt  [value-entities state-atom table-view-node-id db reverse? attribute entity]
   {:local-id :adding-prompt
@@ -4956,7 +4975,7 @@
                                                                                 stred-transaction
                                                                                 prelude-transaction)))
         root-view-state-atom (dependable-atom/atom {})]
-    #_(common/value db
+    #_(db-common/value db
                     (:tmp/system-1 temporary-id-resolution)
                     (prelude :label))
     (fn []
@@ -5287,7 +5306,6 @@
     )
 
   )
-
 
 (deftest test-entity-removal-2
   (let [stream-db (create-dependable-stream-db-in-memory "stream" [db-common/eav-index-definition
