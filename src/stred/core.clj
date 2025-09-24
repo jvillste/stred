@@ -1530,6 +1530,9 @@
     (vec (concat before [value] after))))
 
 (deftest test-insert
+  (is (= [:x]
+         (insert [] 0 :x)))
+
   (is (= '(1 :x 2 3)
          (insert [1 2 3] 1 :x)))
 
@@ -1634,18 +1637,18 @@
 
 (defn drop-selection-anchor-array-editor-command [state state-atom]
   {:name "drop selection anchor"
-                         :available? (not (= (:selected-index state)
-                                             (:anchor-index state)))
-                         :key-patterns [[[#{:control} :space]]]
-                         :run! (fn [_subtree]
-                                 (swap! state-atom assoc :anchor-index (:selected-index state)))})
+   :available? (not (= (:selected-index state)
+                       (:anchor-index state)))
+   :key-patterns [[[#{:control} :space]]]
+   :run! (fn [_subtree]
+           (swap! state-atom assoc :anchor-index (:selected-index state)))})
 
 (defn reaise-selection-anchor-array-editor-command [state state-atom]
   {:name "raise selection anchor"
-                         :available? (:anchor-index state)
-                         :key-patterns escape-key-pattern-sequences
-                         :run! (fn [_subtree]
-                                 (swap! state-atom dissoc :anchor-index))})
+   :available? (:anchor-index state)
+   :key-patterns escape-key-pattern-sequences
+   :run! (fn [_subtree]
+           (swap! state-atom dissoc :anchor-index))})
 
 (defn delete-selected-array-editor-command [state array db item-removal-transaction entity attribute state-atom]
   {:name "delete selected"
@@ -1759,9 +1762,9 @@
                                                        (for [value array]
                                                          [:add entity attribute value]))))}])
 
-                       (delete-selected-array-editor-command state array db item-removal-transaction entity attribute state-atom)
-                       (move-backward-array-editor-command state db entity attribute array state-atom)
-                       (move-forward-array-editor-command state array db entity attribute state-atom))}))
+                       [(delete-selected-array-editor-command state array db item-removal-transaction entity attribute state-atom)
+                        (move-backward-array-editor-command state db entity attribute array state-atom)
+                        (move-forward-array-editor-command state array db entity attribute state-atom)])}))
 
 (defn focus-gained? [event]
   (and (= :on-target (:phase event))
@@ -2560,7 +2563,7 @@
 
                               (fn item-removal-transaction [editor]
                                 (db-common/changes-to-remove-component-tree (db-common/deref db)
-                                                                         editor))
+                                                                            editor))
 
                               (fn new-item-transaction [new-item]
                                 {:item-id :tmp/new-editor
@@ -2910,8 +2913,11 @@
                 possible-commands-and-subtrees (->> focused-subtrees-with-command-sets
                                                     (mapcat (fn [subtree]
                                                               (for [command (:commands (:command-set subtree))]
-                                                                {:subtree subtree
-                                                                 :command command})))
+                                                                (do (assert (and (map? command)
+                                                                                 (some? (:name command)))
+                                                                            (str "not a command:" (pr-str command)))
+                                                                    {:subtree subtree
+                                                                     :command command}))))
                                                     (filter (fn [command-and-subtree]
                                                               (and (:available? (:command command-and-subtree))
                                                                    (some (partial keyboard/key-patterns-prefix-match? triggered-key-patterns)
@@ -3197,8 +3203,8 @@
                                                                                                              (stred :lens) {:dali/id :tmp/new-lens}
                                                                                                              (stred :entity) @focused-entity})
                                                                       [[:set notebook (stred :views) (vec (conj (db-common/value db
-                                                                                                                              notebook
-                                                                                                                              (stred :views))
+                                                                                                                                 notebook
+                                                                                                                                 (stred :views))
                                                                                                                 :tmp/new-view))]])))}]}
               (ver 0
                    (assoc-last :local-id :notebook-label
@@ -3211,7 +3217,7 @@
 
                            (fn item-removal-transaction [view]
                              (db-common/changes-to-remove-component-tree (db-common/deref db)
-                                                                      view))
+                                                                         view))
 
                            (fn new-item-transaction [new-item]
                              {:item-id :tmp/new-view
@@ -3247,8 +3253,8 @@
                                        :key-patterns [[#{:control} :c] [#{:control} :c]]}]
                                      (for [[index type] (map-indexed vector
                                                                      (into [] (let [types (db-common/entities-from-ave (db-common/index db :ave)
-                                                                                                                    (prelude :type-attribute)
-                                                                                                                    (prelude :type-type))]
+                                                                                                                       (prelude :type-attribute)
+                                                                                                                       (prelude :type-type))]
                                                                                 (concat (remove (fn [type]
                                                                                                   (or (= "prelude"
                                                                                                          (:stream-id type))
@@ -3438,7 +3444,7 @@
                {:view (value-view db notebook)
                 #_(text (str "notebook: " (label db notebook)
                              #_(or (label db (db-common/value db (first (db-common/value db notebook (stred :views)))
-                                                           (stred :entity)))
+                                                              (stred :entity)))
                                    (db-common/value db notebook (stred :views)))))
                 :available? true
                 ;;                   :key-patterns  [[#{:control} :enter]]
@@ -4602,7 +4608,7 @@
 
                            (fn item-removal-transaction [editor]
                              (db-common/changes-to-remove-component-tree (db-common/deref db)
-                                                                      editor))
+                                                                         editor))
                            (fn item-commands [editor]
                              (let [range (db-common/value-in db
                                                              editor
@@ -4976,8 +4982,8 @@
                                                                                 prelude-transaction)))
         root-view-state-atom (dependable-atom/atom {})]
     #_(db-common/value db
-                    (:tmp/system-1 temporary-id-resolution)
-                    (prelude :label))
+                       (:tmp/system-1 temporary-id-resolution)
+                       (prelude :label))
     (fn []
       (let [lens-map (db-common/value db
                                       (:tmp/editor temporary-id-resolution)
