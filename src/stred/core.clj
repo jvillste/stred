@@ -916,7 +916,7 @@
 (defn type-symbol [type]
   (condp = type
     (argumentation :statement) (box (layouts/with-minimum-size 40 10 (text "S"))
-                                    {:fill-color [200 200 255 255]})
+                                    {:fill-color [100 100 255 255]})
     (argumentation :argument) (box (layouts/with-minimum-size 40 10 (text "A"))
                                    {:fill-color [200 255 200 255]})
 
@@ -947,7 +947,8 @@
 (defn focus-highlight [child]
   (highlight child
              {:fill-color (if (keyboard/sub-component-is-in-focus?)
-                            (:focus-highlight-color theme)
+                            #_(:focus-highlight-color theme)
+                            (:highlighted-background-color theme)
                             (:background-color theme))}))
 
 (defn on-click-mouse-event-handler [on-clicked node event]
@@ -982,6 +983,16 @@
                                         (prelude :type-attribute))
                        entity-id)
         (text (label db entity-id))))
+
+(defn entity-view-3 [db entity-id]
+  [focus-highlight {:node (chor 10
+                                (type-symbol (db-common/value db
+                                                              entity-id
+                                                              (prelude :type-attribute)))
+                                (text (label db entity-id)))
+                    :entity entity-id
+                    :can-gain-focus? true
+                    :mouse-event-handler [on-click-mouse-event-handler (partial open-entity! global-state-atom entity-id)]}])
 
 (defn entity-string [db entity-id]
   (str "["
