@@ -89,7 +89,7 @@
                   :symbol-foreground-color text-color #_(add-color symbol-background
                                                                    (gray 100))
                   :highlighted-background-color (add-color background-color
-                                                           [0 140 0])
+                                                           [0 80 0])
                   :selection-background-color (add-color background-color
                                                          [0 100 0])
                   #_(add-color background-color
@@ -935,7 +935,9 @@
   (-> state
       (update :previous-entities (fn [previous-entities]
                                    (concat (take-last 4 previous-entities)
-                                           (if (:entity state)
+                                           [{:entity (:entity state)
+                                             :node-id node-id}]
+                                           #_(if (:entity state)
                                              [{:entity (:entity state)
                                                :node-id node-id}]
                                              []))))
@@ -987,6 +989,17 @@
 (defn entity-view-3 [db entity-id]
   [focus-highlight {:node (chor 10
                                 (type-symbol (db-common/value db
+                                                              entity-id
+                                                              (prelude :type-attribute)))
+                                (text (label db entity-id)))
+                    :entity entity-id
+                    :can-gain-focus? true
+                    :mouse-event-handler [on-click-mouse-event-handler (partial open-entity! global-state-atom entity-id)]}])
+
+
+(defn entity-view-4 [db type-symbol-function entity-id]
+  [focus-highlight {:node (chor 10
+                                (type-symbol-function (db-common/value db
                                                               entity-id
                                                               (prelude :type-attribute)))
                                 (text (label db entity-id)))
@@ -3500,10 +3513,15 @@
                                 update :highlight-view-call-cache-misses? not))}
                 {:name "toggle viewing of entity ids"
                  :available? true
-                 :key-patterns [[#{:meta} :w]]
+                 :key-patterns [[#{:meta :shift} :i]]
                  :run! (fn [_subtree]
                          (swap! global-state-atom
                                 update :show-entity-ids? not))}
+                {:name "close entity"
+                 :available? (:entity state)
+                 :key-patterns [[#{:meta} :w]]
+                 :run! (fn [_subtree]
+                         (open-entity! global-state-atom nil))}
                 {:name "descent focus"
                  :available? true
                  :key-patterns [[[#{:meta} :d]]
