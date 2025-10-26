@@ -1903,11 +1903,13 @@
                                          {})]
     (fn array-editor [db entity attribute item-removal-transaction new-item-transaction available-items item-view & [{:keys [item-commands
                                                                                                                              show-empty-prompt?
-                                                                                                                             allow-array-spreading?]
+                                                                                                                             allow-array-spreading?
+                                                                                                                             gap]
                                                                                                                       :or {show-empty-prompt? true
-                                                                                                                           allow-array-spreading? false}}]]
+                                                                                                                           allow-array-spreading? false
+                                                                                                                           gap 0}}]]
       (apply ver
-             0
+             gap
              (array-editor-nodes state-atom
                                  db
                                  entity
