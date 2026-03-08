@@ -49,14 +49,14 @@
                 (stred/move-backward-array-editor-command state db entity attribute array state-atom)
                 (stred/move-forward-array-editor-command state array db entity attribute state-atom)]}))
 
-(defn unlabeled-array-editor [_db _entity _attribute _item-view _new-item-transaction _item-removal-transaction]
+(defn unlabeled-array-editor [_db _entity _attribute _item-view _new-item-transaction _item-removal-transaction & [_options]]
   (let [state-atom (dependable-atom/atom "unlabeled-array-editor-state"
                                          {})]
-    (fn unlabeled-array-editor [db entity attribute item-view new-item-transaction item-removal-transaction]
+    (fn unlabeled-array-editor [db entity attribute item-view new-item-transaction item-removal-transaction & [{:keys [gap] :or {gap 0}}]]
       (let [state @state-atom
             array (db-common/value db entity attribute)]
         {:node (apply stred/ver
-                      0
+                      gap
                       (if (empty? array)
                         [[stred/focus-highlight {:node (stred/text "+")
                                                  :can-gain-focus? true}]]

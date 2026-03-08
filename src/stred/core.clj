@@ -887,7 +887,7 @@
        (distinct)))
 
 (defn highlight [content & [{:keys [fill-color] :or {fill-color [240 240 255 255]}}]]
-  (layouts/box 3
+  (layouts/box 5
                (visuals/rectangle-2 :fill-color fill-color
                                     :draw-color nil
                                     :line-width 0
@@ -1717,7 +1717,7 @@
                     (< (:selected-index state)
                        (dec (count array))))
    :key-patterns [[#{:meta} :n]]
-   :run! (fn [subtree]
+   :run! (fn [_subtree]
            (transact! db [[:set entity attribute (vec (move-right (:selected-index state)
                                                                   array))]])
 
@@ -4258,8 +4258,6 @@
             ;; "du" "temp/du"
             "uoa" "temp/uses-of-argument"
             index-definitions)])
-
-
   )
 
 (defn notebook-ui-for-db [db]
