@@ -954,7 +954,7 @@
              {:fill-color (if (keyboard/sub-component-is-in-focus?)
                             #_(:focus-highlight-color theme)
                             (:highlighted-background-color theme)
-                            (:background-color theme))}))
+                            [0 0 0 0])}))
 
 (defn on-click-mouse-event-handler [on-clicked node event]
   (when (= :mouse-clicked (:type event))
